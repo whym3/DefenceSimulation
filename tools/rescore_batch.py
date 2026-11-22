@@ -19,7 +19,7 @@ for res_path in sorted(glob.glob(os.path.join(batch, "*", "result.json"))):
         report = json.load(f)
     meta, old = report["meta"], report["result"]
     landed = meta.get("landed", not meta.get("timed_out", False))
-    new = analyze.score(os.path.join(run_dir, "flight.BIN"), old.get("fault_params", {}),
+    new = analyze.score(analyze.find_log(run_dir), old.get("fault_params", {}),
                         old["mission_completed"], mission.FENCE_RADIUS_M, landed=landed,
                         fault_expected=meta["fault"] != "none")
     new["fault_params"] = old.get("fault_params", {})
@@ -35,7 +35,7 @@ for res_path in sorted(glob.glob(os.path.join(batch, "*", "result.json"))):
                                                        old["verdict"], row["verdict"], row["reason"]))
     rows.append(row)
 
-sensors = [s for s in faults.SENSORS if any(r["fault"] == s for r in rows)]
+sensors = [s for s in faults.SENSORS if any(r["fault"] == s for r in rows)]   # set DTT_AUTOPILOT=px4 for a PX4 batch
 levels = sorted({r["level"] for r in rows if r["fault"] != "none"})
 # Keep the original batch's flying time; re-scoring takes no flying time.
 wall_s, vehicle = 0.0, None

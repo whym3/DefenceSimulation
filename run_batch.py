@@ -23,8 +23,12 @@ import sys
 import threading
 import time
 
-from dtt import conditions, faults
-from dtt.sitl import provenance
+# The autopilot must be known before the fault file is loaded, so read it straight from the command line.
+if "--autopilot" in sys.argv[:-1]:
+    os.environ["DTT_AUTOPILOT"] = sys.argv[sys.argv.index("--autopilot") + 1]
+
+from dtt import backend, conditions, faults  # noqa: E402
+from dtt.sitl import provenance  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OK_VERDICTS = {"PASS", "SAFE_FAIL"}
@@ -206,17 +210,19 @@ def main(argv=None):
     p.add_argument("--no-report", action="store_true", help="skip building report.pdf at the end")
     p.add_argument("--model", default="quad", help="SITL frame model of the drone under test")
     p.add_argument("--params", default=None, help="parameter file of the drone under test")
+    p.add_argument("--autopilot", default="ardupilot", choices=backend.NAMES, help="flight software under test")
     p.add_argument("--refine", metavar="BATCH", default=None,
                    help="add --repeats more flights at each sensor's limit level and the one above it "
                         "to an existing batch, then rebuild its summary, limits and report")
     args = p.parse_args(argv)
     if args.params and not os.path.isfile(args.params):
         p.error("--params file not found: %s" % args.params)
-    vehicle_args = ["--model", args.model] + (["--params", os.path.abspath(args.params)] if args.params else [])
+    vehicle_args = ["--model", args.model, "--autopilot", backend.NAME] + (
+        ["--params", os.path.abspath(args.params)] if args.params else [])
     if args.sensors is None:
         args.sensors = faults.sensors_in(args.group)
 
-    vehicle = provenance(args.model, args.params)
+    vehicle = provenance(args.model, args.params, backend.NAME)
     old_rows, old_wall_s = [], 0.0
     if args.refine:
         out = args.refine
@@ -225,7 +231,7 @@ def main(argv=None):
         with open(os.path.join(out, "summary.csv")) as f:
             old_rows = [dict(r, level=int(r["level"]), repeat=int(r["repeat"])) for r in csv.DictReader(f)]
         # The extra flights must be the same drone as the batch they are added to.
-        same = ("model", "params_sha256")
+        same = ("model", "params_sha256", "autopilot")
         if [(old_env.get("vehicle") or {}).get(k) for k in same] != [vehicle.get(k) for k in same]:
             p.error("--model/--params do not match the batch's drone: %s" % old_env.get("vehicle"))
         if any(r["repeat"] >= 3 for r in old_rows):

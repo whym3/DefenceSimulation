@@ -159,6 +159,13 @@ class Vehicle:
                     return
         raise FlightError("vehicle would not arm; last messages: %s" % self.statustext[-5:])
 
+    def start_mission(self, alt_m):
+        """Arms, takes off in GUIDED and hands over to the uploaded mission."""
+        self.set_mode("GUIDED")
+        self.arm()
+        self.takeoff(alt_m)
+        self.set_mode("AUTO")
+
     def force_disarm(self, timeout=5):
         """Disarms even in flight (MAVLink magic value 21196). Used only to end a finished test."""
         self.m.mav.command_long_send(self.m.target_system, self.m.target_component,

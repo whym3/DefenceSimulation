@@ -13,7 +13,7 @@ for run_dir in sys.argv[1:]:
         report = json.load(f)
     meta, old = report["meta"], report["result"]
     landed = meta.get("landed", not meta.get("timed_out", False))
-    new = analyze.score(os.path.join(run_dir, "flight.BIN"), old.get("fault_params", {}),
+    new = analyze.score(analyze.find_log(run_dir), old.get("fault_params", {}),
                         old["mission_completed"], mission.FENCE_RADIUS_M, landed=landed,
                         fault_expected=meta["fault"] not in ("none", None))
     new["fault_params"] = old.get("fault_params", {})

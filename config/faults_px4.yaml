@@ -1,0 +1,20 @@
+# Sensor faults for PX4 (v1.18, SIH simulator), in the same format as faults.yaml.
+#
+# PX4's simulator offers far fewer fault parameters than ArduPilot's. Each family here was checked
+# in flight to take effect. PX4 applies a simulator parameter up to one simulated second after it is
+# logged, so fault times are accurate to about one second.
+
+gps_loss:
+  name: GPS satellites lost
+  description: Number of satellites the simulated GPS reports (10 normally; PX4 needs 6, and below 4 there is no fix)
+  labels: {1: 8 satellites, 2: 6 satellites, 3: 5 satellites, 4: 3 satellites (no fix), 5: 0 satellites (no fix)}
+  levels:
+    1: {SIM_GPS_USED: 8}
+    2: {SIM_GPS_USED: 6}
+    3: {SIM_GPS_USED: 5}
+    4: {SIM_GPS_USED: 3}
+    5: {SIM_GPS_USED: 0}
+
+# Repeats vary the wind direction, as for ArduPilot.
+repeats:
+  wind_directions_deg: [0, 120, 240]

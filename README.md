@@ -52,6 +52,33 @@ and cached in `data/`, so tests run offline.
   identical safe limits in all 60 sensor groups. The only flight-level differences were GPS
   jamming, which uses random data. `tools/compare_batches.py A B` repeats this check.
 
+## PX4 (second autopilot)
+
+```bash
+sudo apt install cmake ninja-build bc      # once
+bash setup/build_px4.sh                    # once: clones PX4 v1.18.0-rc2 into ~/px4 and builds its simulator
+python run_one.py --autopilot px4                                # baseline flight
+python run_one.py --autopilot px4 --fault gps_loss --level 5     # GPS satellites lost
+python run_batch.py --autopilot px4 --max-wall-s 150 --out batches/px4-120x
+```
+
+`--autopilot px4` switches the simulator, the MAVLink client, the log reader and the fault file
+([config/faults_px4.yaml](config/faults_px4.yaml)); the scoring rules and the report are the same.
+What is different about PX4:
+
+- **Simulator:** PX4's built-in SIH (no graphics, no second program), with its 1 kg quadcopter. The
+  two autopilots therefore fly different simulated airframes.
+- **Speed:** about 10 times real time per simulator whatever `--speedup` says, so a flight takes
+  about 50 s; twelve run side by side without slowing each other.
+- **Wind:** steady wind only, no turbulence. A drone blown out of the geofence never lands, so pass
+  `--max-wall-s 150` to batches.
+- **Thin air:** SIH ignores air density for multicopters, so the tool scales its thrust and drag by
+  the condition's density ratio.
+- **Faults:** PX4's simulator has few fault parameters. So far only the GPS satellite count is
+  tested. Barometer and compass offsets were tried and had no visible effect with default settings:
+  PX4 takes its height from GPS and re-learns the compass offset in flight.
+- **A release candidate** is pinned because the stable release has no wind in SIH.
+
 ## Faults
 
 Defined in [config/faults.yaml](config/faults.yaml) as ArduPilot SITL `SIM_*` parameters, five

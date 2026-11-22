@@ -8,26 +8,33 @@ import os
 
 import yaml
 
-CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config", "faults.yaml")
+CONFIG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config")
+FILES = {"ardupilot": "faults.yaml", "px4": "faults_px4.yaml"}   # each autopilot's simulator has its own parameters
 METRES_PER_DEG_LAT = 111320.0
+LEVELS = (1, 2, 3, 4, 5)
 
 
-def load(path=CONFIG_PATH):
+def load(path):
     with open(path) as f:
         return yaml.safe_load(f)
 
 
-_CONFIG = load()
-SENSORS = [k for k in _CONFIG if k != "repeats"]
-# Fault group: "gradual" (bias, drift, offsets, jamming, loss) or "abrupt" (steps, noise, scale).
-GROUP = {s: _CONFIG[s].get("group", "gradual") for s in SENSORS}
-GROUPS = sorted(set(GROUP.values()))
+def use(autopilot):
+    """Loads one autopilot's fault file. Called at import (DTT_AUTOPILOT) and by the report for old batches."""
+    global _CONFIG, SENSORS, GROUP, GROUPS, REPEATS
+    _CONFIG = load(os.path.join(CONFIG_DIR, FILES[autopilot]))
+    SENSORS = [k for k in _CONFIG if k != "repeats"]
+    # Fault group: "gradual" (bias, drift, offsets, jamming, loss), "abrupt" (steps, noise, scale) or "ew".
+    GROUP = {s: _CONFIG[s].get("group", "gradual") for s in SENSORS}
+    GROUPS = sorted(set(GROUP.values()))
+    REPEATS = _CONFIG["repeats"]
+
+
+use(os.environ.get("DTT_AUTOPILOT", "ardupilot"))
 
 
 def sensors_in(group):
     return [s for s in SENSORS if group == "all" or GROUP[s] == group]
-REPEATS = _CONFIG["repeats"]
-LEVELS = (1, 2, 3, 4, 5)
 
 
 def _convert(value):

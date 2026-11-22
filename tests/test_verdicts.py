@@ -138,6 +138,51 @@ def test_every_fault_family_has_five_levels_with_labels_and_a_fixed_parameter():
             assert faults.label(s, lv) != "level %d" % lv, (s, lv)
 
 
+def px4_topics(failsafe_at=None, invalid_from=None):
+    t = [i * 1e6 for i in range(10)]
+    nav = [3] * 10
+    fs = [0] * 10
+    if failsafe_at is not None:
+        nav[failsafe_at:] = [12] * (10 - failsafe_at)   # DESCEND
+        fs[failsafe_at:] = [1] * (10 - failsafe_at)
+    nav[9], wanted = (nav[9] if failsafe_at is not None else 5), [3] * 9 + [3 if failsafe_at is not None else 5]
+    return {
+        "vehicle_global_position_groundtruth": dict(timestamp=t, lat=[28.0] * 10, lon=[77.0] * 10, alt=[250.0] * 10),
+        "vehicle_global_position": dict(timestamp=t, lat=[28.0] * 10, lon=[77.0] * 10, alt=[250.0] * 10,
+                                        lat_lon_valid=[invalid_from is None or i < invalid_from for i in range(10)]),
+        "vehicle_status": dict(timestamp=t, nav_state=nav, nav_state_user_intention=wanted, failsafe=fs),
+        "failsafe_flags": dict(timestamp=t, geofence_breached=[0] * 6 + [1] * 4),
+    }
+
+
+def test_px4_log_marks_only_its_own_failsafe_as_a_reaction():
+    from dtt import px4_log
+    d = px4_log.from_topics(px4_topics(failsafe_at=4), [(3e6, "SIM_GPS_USED", 0)], [(1e6, "hello")])
+    assert d["modes"] == [(0.0, 3, 0), (4.0, 12, px4_log.FAILSAFE_REASON)], d["modes"]
+    assert px4_log.FAILSAFE_REASON in analyze.FAILSAFE_MODE_REASONS
+    assert d["parms"] == [(3.0, "SIM_GPS_USED", 0.0)] and d["errs"] == [(6.0, px4_log.FENCE_ERR, 1)]
+    # The mission's own return-home at the end changes the commanded mode too: not a reaction.
+    d = px4_log.from_topics(px4_topics(), [], [])
+    assert d["modes"] == [(0.0, 3, 0), (9.0, 5, 0)], d["modes"]
+
+
+def test_px4_log_drops_estimates_px4_marks_invalid():
+    from dtt import px4_log
+    d = px4_log.from_topics(px4_topics(invalid_from=6), [], [])
+    assert len(d["sim"]) == 10 and len(d["pos"]) == 6
+
+
+def test_px4_fault_file_loads_with_five_levels():
+    from dtt import faults
+    try:
+        faults.use("px4")
+        for s in faults.SENSORS:
+            for lv in faults.LEVELS:
+                assert all(faults.param_alternatives(s, lv)) and faults.label(s, lv) != "level %d" % lv, (s, lv)
+    finally:
+        faults.use("ardupilot")
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):

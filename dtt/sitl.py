@@ -11,14 +11,18 @@ LOG_TRICKLE_BYTES = 16 * 1024  # log growth below this per settle window counts 
 COPTER_DEFAULTS =os.path.join(ARDUPILOT_DIR, "Tools/autotest/default_params/copter.parm")
 
 
-def provenance(model="quad", params=None):
-    """What was tested: firmware, tool version, frame model and the drone's parameter file."""
+def provenance(model="quad", params=None, autopilot="ardupilot"):
+    """What was tested: autopilot and its version, tool version, frame model and the drone's parameter file."""
     def git(directory, *args):
         try:
             return subprocess.run(("git", "-C", directory) + args, capture_output=True, text=True).stdout.strip() or None
         except OSError:
             return None
-    p = dict(model=model, ardupilot=git(ARDUPILOT_DIR, "describe", "--tags", "--match", "Copter-*", "--always", "--dirty"),
+    if autopilot == "px4":
+        firmware = git(os.path.expanduser(os.environ.get("PX4_DIR", "~/px4")), "describe", "--tags", "--always", "--dirty")
+    else:
+        firmware = git(ARDUPILOT_DIR, "describe", "--tags", "--match", "Copter-*", "--always", "--dirty")
+    p = dict(model=model, autopilot=autopilot, firmware=firmware,
              tool_commit=git(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "rev-parse", "--short", "HEAD"))
     if params:
         with open(params, "rb") as f:

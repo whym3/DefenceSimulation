@@ -10,7 +10,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from dtt.analyze import dist_m, read_log  # noqa: E402
+from dtt.analyze import dist_m, find_log, load  # noqa: E402
 
 ap = argparse.ArgumentParser()
 ap.add_argument("path")
@@ -25,10 +25,10 @@ if os.path.isdir(path):
     if start is None:
         start = res.get("fault_time_s")
     print("verdict:", res["verdict"], "-", res["reason"])
-    path = os.path.join(path, "flight.BIN")
+    path = find_log(path)
 start = start or 0.0
 
-d = read_log(path)
+d, _ = load(path)
 events = []
 for ts, name, val in d["parms"]:
     if name.startswith("SIM_") and ts > d["sim"][0][0] + 1:

@@ -1,0 +1,5 @@
+vehicle_global_position 100 0
+vehicle_global_position_groundtruth 100 0
+vehicle_status 0 0
+failsafe_flags 0 0
+vehicle_land_detected 0 0

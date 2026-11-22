@@ -34,12 +34,15 @@ REACTION_WINDOW_S = 60.0
 def vehicle_text(env):
     """(drone, flight software) lines from the batch's recorded vehicle; older batches have none."""
     v = env.get("vehicle") or {}
-    drone = "SITL '%s' frame model, " % v.get("model", "quad")
+    px4 = v.get("autopilot") == "px4"
+    drone = "%s '%s' frame model, " % ("PX4 SIH simulator" if px4 else "SITL", "sihsim_quadx" if px4 and v.get("model") == "quad" else v.get("model", "quad"))
     if v.get("params_file"):
         drone += "parameter file %s (sha256 %s)" % (v["params_file"], v["params_sha256"][:12])
     else:
-        drone += "ArduPilot default parameters (a generic quadcopter, not a specific product)"
-    firmware = "ArduPilot %s, software-in-the-loop simulator (SITL)" % (v.get("ardupilot") or "Copter-4.7.3")
+        drone += "%s default parameters (a generic quadcopter, not a specific product)" % ("PX4" if px4 else "ArduPilot")
+    # Batches from before PX4 support recorded the version under "ardupilot".
+    firmware = "%s %s, software-in-the-loop simulator (SITL)" % (
+        "PX4" if px4 else "ArduPilot", v.get("firmware") or v.get("ardupilot") or "Copter-4.7.3")
     if v.get("tool_commit"):
         firmware += "; test tool %s" % v["tool_commit"]
     return drone, firmware
@@ -219,6 +222,7 @@ def level_outcomes(rows, env, sensor):
 
 def build(batch, out_path=None):
     rows, env = load(batch)
+    faults.use((env.get("vehicle") or {}).get("autopilot") or "ardupilot")   # level labels come from that fault file
     DRONE, FIRMWARE = vehicle_text(env)
     out_path = out_path or os.path.join(batch, "report.pdf")
     fig_dir = os.path.join(batch, "report_figures")

@@ -15,9 +15,13 @@ import shutil
 import sys
 import time
 
-from dtt import analyze, conditions, faults, mission
-from dtt.flight import FlightError, Vehicle
-from dtt.sitl import Sitl, provenance
+# The autopilot must be known before the fault file is loaded, so read it straight from the command line.
+if "--autopilot" in sys.argv[:-1]:
+    os.environ["DTT_AUTOPILOT"] = sys.argv[sys.argv.index("--autopilot") + 1]
+
+from dtt import analyze, backend, conditions, faults, mission  # noqa: E402
+from dtt.flight import FlightError  # noqa: E402
+from dtt.sitl import provenance  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # Checked at 60 s too: a drone that disarms by itself does so within about 3 s of touchdown, and one
@@ -30,6 +34,7 @@ def fly(fault="none", level=0, repeat=0, condition="delhi", wind_level="typical"
         model="quad", params=None):
     """params: parameter file of the drone under test, loaded as SITL defaults. The test's own
     settings (mission.BASE_PARAMS and the wind) are still set on top of it."""
+    be = backend.get()
     home = conditions.home(condition)
     level = 0 if fault == "none" else level
     run_id = "%s_%s-%s_%s-L%d_r%d" % (datetime.datetime.now().strftime("%Y%m%d-%H%M%S"),
@@ -39,30 +44,27 @@ def fly(fault="none", level=0, repeat=0, condition="delhi", wind_level="typical"
     os.makedirs(outdir, exist_ok=True)
 
     wind_speed, wind_turb = conditions.wind(condition, wind_level)
-    wind = faults.wind_for_repeat(repeat, wind_speed, wind_turb)
+    wind = be.wind_params(repeat, wind_speed, wind_turb)
     meta = dict(run_id=run_id, site=condition, condition=conditions.describe(condition),
                 wind_level=wind_level, fault=fault, level=level, repeat=repeat,
                 description=faults.describe(fault, level), wind=wind, speedup=speedup, home=home,
-                vehicle=provenance(model, params))
+                vehicle=provenance(model, params, be.name))
     fault_params = {}
     completed = False
-    sitl = Sitl(workdir, home, instance=instance, speedup=speedup, model=model,
-                extra_defaults=[os.path.abspath(params)] if params else None)
+    sitl = be.make_sitl(workdir, home, instance, speedup, model, params, condition)
     sitl.start()
     try:
-        v = Vehicle(sitl.port)
+        v = be.vehicle(sitl.port)
         v.wait_ready()
-        for k, val in list(mission.BASE_PARAMS.items()) + list(wind.items()):
+        for k, val in list(be.base_params.items()) + list(wind.items()):
             if not v.set_param(k, val):
                 raise FlightError("parameter %s not accepted" % k)
         items = mission.patrol_square(home)
         v.upload_mission(items)
-        last_seq = len(items) - 1
+        last_seq = len(items) - 1 + be.seq_shift
+        fault_at_seq = mission.FAULT_AT_SEQ + be.seq_shift
 
-        v.set_mode("GUIDED")
-        v.arm()
-        v.takeoff(mission.PATROL_ALT_M)
-        v.set_mode("AUTO")
+        v.start_mission(mission.PATROL_ALT_M)
 
         alternatives = faults.param_alternatives(fault, level)
         ramps = faults.ramps(fault, level)
@@ -84,7 +86,7 @@ def fly(fault="none", level=0, repeat=0, condition="delhi", wind_level="typical"
                         break
                 else:
                     ground_since = None
-            if not injected and v.mission_seq >= mission.FAULT_AT_SEQ:
+            if not injected and v.mission_seq >= fault_at_seq:
                 applied = v.apply_first_supported(alternatives)
                 if applied is None:
                     raise FlightError("simulator rejected every parameter set for %s" % meta["description"])
@@ -117,7 +119,7 @@ def fly(fault="none", level=0, repeat=0, condition="delhi", wind_level="typical"
     logs = sitl.dataflash_logs()
     if not logs:
         raise FlightError("no flight log produced; see %s/sitl.out" % workdir)
-    log_path = os.path.join(outdir, "flight.BIN")
+    log_path = os.path.join(outdir, be.log_name)
     shutil.copy(logs[-1], log_path)
     shutil.copy(os.path.join(workdir, "sitl.out"), os.path.join(outdir, "sitl.out"))
     if not keep_workdir:
@@ -146,6 +148,7 @@ def main():
     p.add_argument("--keep-workdir", action="store_true")
     p.add_argument("--model", default="quad", help="SITL frame model of the drone under test")
     p.add_argument("--params", default=None, help="parameter file of the drone under test")
+    p.add_argument("--autopilot", default="ardupilot", choices=backend.NAMES, help="flight software under test")
     args = p.parse_args()
     if args.params and not os.path.isfile(args.params):
         p.error("--params file not found: %s" % args.params)

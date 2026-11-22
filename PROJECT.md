@@ -273,9 +273,59 @@ in the ten conditions the generic quad can fly in.
   position-source switching) were not tried, and differences of two or three flights between
   columns are within run-to-run variation.
 
+### PX4: a second autopilot (22 November 2026)
+
+PX4 v1.18.0-rc2 now flies through the same tool with one switch, `--autopilot px4`. It uses PX4's
+built-in simulator (SIH) and its 1 kg quadcopter. The scoring rules and the report are shared with
+ArduPilot; only the simulator, the MAVLink client, the log reader and the fault file differ.
+
+**Feasibility check (phase 0), all answered yes or with a known limit**
+- Speed: about 10 times real time per simulator, whatever speed is asked for; twelve run side by
+  side without slowing each other. A flight takes 30 to 100 s, against 4.5 s for ArduPilot.
+- The log holds both the true position and the autopilot's estimate, and they agree to about 1 m.
+- Wind works, but only as steady wind: no turbulence.
+- Thin air is not modelled for multicopters, so the tool scales thrust and drag by the air density.
+- Few faults exist in the simulator. GPS satellite count works. Barometer and compass offsets had
+  no visible effect with default settings (PX4 takes height from GPS and re-learns the compass).
+- Logs are 1 MB per flight after logging only the topics the scorer reads (122 MB before).
+
+**First batch (phase 1): 180 flights, 33 minutes, `batches/px4-120x`**
+Baseline plus one fault family, GPS satellites dropping to 8, 6, 5, 3 and 0, in every zone and wind.
+
+| Wind | No fault | 8, 6, 5 satellites | 3 or 0 satellites |
+|---|---|---|---|
+| Calm | pass | pass | safe landing, all 6 flights |
+| Typical | pass | pass | 15 safe, 3 unsafe of 18 |
+| Strong | pass in Delhi and Ladakh | pass (one flight did not finish) | 10 safe, 8 unsafe of 18 |
+| Extreme (13 m/s and more) | blown out of the geofence, every flight | not flyable | not flyable |
+
+- **PX4 notices GPS loss quickly and consistently:** the safety mode switched on 5.1 to 5.3 s after
+  the fault in every one of the 42 flights. ArduPilot, on the same kind of fault, was in time too.
+- **Its reaction is a blind descent, and the wind decides where it lands.** With no position, PX4
+  comes straight down without holding its place. In calm air that is safe. In wind it lands
+  hundreds of metres from home (223 m to 544 m seen), and 10 of 36 flights in typical and strong
+  wind were carried out of the 600 m geofence before touching down. One more landed but never
+  switched its motors off.
+- **Down to 5 satellites nothing happens:** the mission completes with 1 to 4 m of position error.
+- **This simulated quad cannot fly in extreme wind,** the same result as ArduPilot's generic quad.
+
+**Limits of this result**
+- The two autopilots fly different simulated airframes, so a difference is autopilot plus airframe.
+- Only one fault family so far. GPS jumps, spoofing, barometer and inertial faults are not yet
+  tested on PX4.
+- A release candidate is used, because the stable PX4 release has no wind in its simulator.
+- Rajasthan in strong wind: two of three no-fault flights landed 16 to 20 m from home and were
+  scored unsafe, so that condition has no limit. The report's reason text for these flights wrongly
+  says "position error"; the cause is the landing distance. The wording needs fixing.
+- The 45 fault flights in extreme wind are marked `ERROR` (the drone was blown away and the log ends
+  in the air). They are in conditions already shown to be unflyable.
+- **Speed is limited by the CPU, not the graphics card.** Neither simulator can use a GPU. More CPU
+  cores (a rented cloud machine) is the way to faster batches.
+
 ### What this proves, and what it does not
 
 **Proves**
+- The tool is not tied to one autopilot: PX4 runs through the same tests, scoring and report.
 - The method works end to end: one autopilot, one broken sensor, a chosen place and wind, an
   automatic verdict, and a report, 1,830 times in under an hour with nobody at the controls.
 - It finds things a buyer would act on: for this drone, GPS and barometer integrity are the weak
@@ -315,9 +365,13 @@ Details are in [README.md](README.md); developer notes are in [CLAUDE.md](CLAUDE
 
 ### Make the numbers defensible (short term)
 1. **Decide the spoofed-landing scoring question** above, then re-score.
-2. **PX4 support.** The open autopilot the US government standardised on, and one of the two that
-   bought-in and Indian-made flight controllers run. Several days of work: a second simulator,
-   log format and scoring path, with on/off faults first.
+2. **PX4, remaining phases.** Baselines and GPS loss are done (see above). Still to do:
+   - Phase 2: accelerometer and gyro bias, compass offset, and barometer faults with PX4 told to
+     take height from the barometer; extra repeats at the limits; an ArduPilot-against-PX4 table.
+   - Phase 3: a small change to PX4's simulated GPS so it can be offset, then GPS jumps and the
+     spoofing drag, which is the comparison that matters most.
+   - Fix the misleading "position error" wording for flights that land too far from home, and
+     look at why Rajasthan strong-wind landings miss home by 16 to 20 m.
 3. **Make drift faults comparable between drones:** hold the fault for a fixed time (or a fixed
    distance) instead of "until the mission ends", so a faster drone is not flattered.
 4. **Test a second position source** against spoofing (a second GNSS receiver, optical flow), since

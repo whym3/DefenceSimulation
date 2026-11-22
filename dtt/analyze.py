@@ -4,6 +4,7 @@ Drift = distance between where the drone really was (simulator truth, SIM messag
 believed it was (AHRS/EKF estimate, POS message).
 """
 import math
+import os
 
 # ArduPilot ModeReason values (libraries/AP_Vehicle/ModeReason.h, Copter-4.7.3) that mean the
 # autopilot changed mode by itself because of a problem: radio, battery, GCS, EKF failsafes,
@@ -64,11 +65,25 @@ def read_log(path):
     return dict(sim=sim, pos=pos, modes=modes, errs=errs, parms=parms, msgs=msgs)
 
 
+def find_log(run_dir):
+    """The flight log in a run folder: flight.ulg for PX4, flight.BIN for ArduPilot."""
+    ulg = os.path.join(run_dir, "flight.ulg")
+    return ulg if os.path.exists(ulg) else os.path.join(run_dir, "flight.BIN")
+
+
+def load(log_path):
+    """Reads either autopilot's log into the same dictionary. Returns (log, mode names)."""
+    if log_path.endswith(".ulg"):
+        from . import px4_log
+        return px4_log.read_log(log_path), px4_log.MODES
+    return read_log(log_path), COPTER_MODES
+
+
 def score(log_path, fault_params, mission_completed, fence_radius_m, landed=True, fault_expected=None):
     """Scores one flight. fault_expected=True with no fault in the log gives verdict NOT_TESTED."""
     if fault_expected is None:
         fault_expected = bool(fault_params)
-    d = read_log(log_path)
+    d, mode_names = load(log_path)
     if not d["sim"]:
         raise ValueError("log has no SIM (simulator truth) messages")
 
@@ -142,7 +157,7 @@ def score(log_path, fault_params, mission_completed, fence_radius_m, landed=True
         for ts, mode, rsn in d["modes"]:
             if ts >= fault_t and rsn in FAILSAFE_MODE_REASONS:
                 reaction_t, reaction_desc = ts, "%s (%s)" % (
-                    COPTER_MODES.get(mode, "mode %d" % mode), MODE_REASON_NAMES.get(rsn, "reason %d" % rsn))
+                    mode_names.get(mode, "mode %d" % mode), MODE_REASON_NAMES.get(rsn, "reason %d" % rsn))
                 break
         for ts, sub, code in d["errs"]:
             if ts >= fault_t and sub in FAILSAFE_ERR_SUBSYS and code != 0:
