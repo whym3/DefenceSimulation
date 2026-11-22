@@ -20,6 +20,8 @@ from dtt.flight import FlightError, Vehicle
 from dtt.sitl import Sitl, provenance
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+# Checked at 60 s too: a drone that disarms by itself does so within about 3 s of touchdown, and one
+# that has not by 15 s still has not at 60 s, so a longer wait changes no verdict.
 STUCK_ON_GROUND_S = 15.0
 
 

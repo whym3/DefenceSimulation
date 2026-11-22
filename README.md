@@ -93,6 +93,21 @@ and `--model` picks the simulator frame model. The file's SHA-256, the ArduPilot
 tool's commit are saved in `result.json` and `envelope.json` and printed on the report's first page.
 The test's own settings (geofence, wind) are applied on top of the file.
 
+A frame model can also carry the airframe's physics (mass, rotors, battery, drag). ArduPilot ships
+one for the Callisto, a 32.5 kg heavy-lift octocopter, with its parameter file:
+
+```bash
+python run_batch.py --model "octa-quad:@ROMFS/models/Callisto.json" \
+    --params ~/ardupilot/Tools/autotest/models/Callisto.param --out batches/callisto-120x
+```
+
+**Run-to-run variation.** Some verdicts change between identical runs because the autopilot itself
+behaves in two ways. Example: after a 700 m GPS jump the fence alarm lands the drone; in about four
+flights in five it then switches its motors off within 3 s (SAFE_FAIL), and in the rest it sits on
+the ground with motors running (UNSAFE). Which one happens depends on whether its estimator switched
+lanes at the alarm. A level like this has a failure rate, not a fixed verdict, so three repeats can
+miss it.
+
 ## Conditions
 
 Defined in [config/conditions.yaml](config/conditions.yaml), using NASA POWER hourly weather for 2020–2024.
