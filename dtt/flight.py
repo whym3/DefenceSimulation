@@ -98,6 +98,11 @@ class Vehicle:
                         return True
         return False
 
+    def send_param(self, name, value):
+        """Sets a parameter without waiting for the reply, for values re-sent during the flight."""
+        self.m.mav.param_set_send(self.m.target_system, self.m.target_component,
+                                  name.encode(), float(value), mavlink.MAV_PARAM_TYPE_REAL32)
+
     def apply_first_supported(self, alternatives):
         """Applies the first parameter set whose parameters all exist. Returns it, or None."""
         for params in alternatives:

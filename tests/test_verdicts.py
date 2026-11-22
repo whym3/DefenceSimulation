@@ -119,6 +119,25 @@ def test_extra_repeats_get_new_wind_directions():
     assert dirs[:3] == [0.0, 120.0, 240.0] and len(set(dirs)) == 10, dirs
 
 
+def test_spoof_drag_is_a_ramp_not_a_fixed_parameter():
+    from dtt import faults
+    assert faults.param_alternatives("gps_spoof", 3) == [{"SIM_GPS1_VERR_X": 1.0}]
+    ramp = faults.ramps("gps_spoof", 3)
+    assert list(ramp) == ["SIM_GPS1_GLTCH_X"]
+    assert abs(ramp["SIM_GPS1_GLTCH_X"] * faults.METRES_PER_DEG_LAT - 1.0) < 1e-9   # 1 m/s north
+    assert faults.ramps("gps", 3) == {} and faults.ramps("none", 0) == {}
+    assert faults.param_alternatives("ew_attack", 5) == [{"SIM_RC_FAIL": 1.0, "SIM_GPS1_VERR_X": 2.0}]
+
+
+def test_every_fault_family_has_five_levels_with_labels_and_a_fixed_parameter():
+    from dtt import faults
+    for s in faults.SENSORS:
+        for lv in faults.LEVELS:
+            # The fault time is read from a parameter that is set once, so each level needs one.
+            assert all(faults.param_alternatives(s, lv)), (s, lv)
+            assert faults.label(s, lv) != "level %d" % lv, (s, lv)
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):

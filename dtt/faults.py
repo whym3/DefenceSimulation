@@ -45,7 +45,24 @@ def param_alternatives(sensor, level):
         return []
     spec = _CONFIG[sensor]["levels"][int(level)]
     options = spec if isinstance(spec, list) else [spec]
-    return [{name: _convert(v) for name, v in opt.items()} for opt in options]
+    return [{name: _convert(v) for name, v in opt.items() if not _is_ramp(v)} for opt in options]
+
+
+def _is_ramp(value):
+    return isinstance(value, dict) and "north_m_per_s" in value
+
+
+def ramps(sensor, level):
+    """Parameters that grow during the flight: {name: degrees of latitude per simulated second}.
+
+    The runner re-sends them after the fault is switched on (a GPS spoofing drag).
+    """
+    if sensor == "none" or level == 0:
+        return {}
+    spec = _CONFIG[sensor]["levels"][int(level)]
+    # shortcut: ramps come from the first alternative only, upgrade if a ramp level ever needs alternatives
+    opt = spec[0] if isinstance(spec, list) else spec
+    return {name: float(v["north_m_per_s"]) / METRES_PER_DEG_LAT for name, v in opt.items() if _is_ramp(v)}
 
 
 def name(sensor):

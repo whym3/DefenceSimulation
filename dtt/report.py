@@ -73,6 +73,7 @@ def cause(reason):
         (r"geofence breached", "left the geofence"),
         (r"failsafe too slow", "safety mode too late (over 5 s after the error passed 10 m)"),
         (r"(position error|drift) [\d.]+ m.*no (safety mode|failsafe)", "followed a false position, no safety mode"),
+        (r"never switched its motors off", "safety mode on, came down but motors kept running"),
         (r"failsafe engaged but", "safety mode on but did not land"),
         (r"did not land", "did not land"),
         (r"never switched on", "fault not reached"),
@@ -412,6 +413,9 @@ def build(batch, out_path=None):
         "Simulation only. A specific drone's weight, motors, battery and parameters change the results. "
         "Its parameter file can be supplied (--params) and is named on page 1 when it was; the airframe "
         "physics stay those of the simulator's frame model.",
+        "GPS spoofing and jamming are modelled at the receiver's output (a false position, velocity or no "
+        "fix), not as radio signals. A spoofing drag runs until the flight ends, so a faster drone is "
+        "dragged for less time.",
         "Wind data are hourly averages (NASA POWER reanalysis), so real gusts are stronger than modelled.",
         "Temperature is represented only through air density. Cold-battery capacity loss and sensor temperature "
         "drift are not modelled.",

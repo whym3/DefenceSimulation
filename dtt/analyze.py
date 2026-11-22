@@ -214,14 +214,18 @@ def score(log_path, fault_params, mission_completed, fence_radius_m, landed=True
     elif mission_completed and drift_for_rules < PASS_DRIFT_M and landed_dist < PASS_DRIFT_M:
         verdict, why = "PASS", "mission completed, drift %.1f m" % drift_for_rules
     elif in_time and landed:
-        verdict, why = "SAFE_FAIL", "failsafe after %.1f s (%s), landed safely" % (reaction_s, reaction_desc)
+        # Say where it came down: a spoofed drone can "return home" to a place far from home.
+        verdict, why = "SAFE_FAIL", "failsafe after %.1f s (%s), landed safely %.0f m from home" % (
+            reaction_s, reaction_desc, landed_dist)
     elif drift_for_rules > UNSAFE_DRIFT_M and reaction_s is None:
         verdict, why = "UNSAFE", "drift %.1f m with no failsafe" % drift_for_rules
     elif reaction_s is not None and not in_time:
         verdict, why = "UNSAFE", "failsafe too slow (%.1f s after the position error passed %.0f m, limit %.0f s)%s" % (
             late_s, PASS_DRIFT_M, SAFE_FAIL_REACTION_S, ", then landed without crash" if landed else "")
     elif reaction_s is not None:
-        verdict, why = "UNSAFE", "failsafe engaged but the drone did not land"
+        # Most of these did reach the ground and then sat there armed (the runner's stuck-on-ground end).
+        verdict, why = "UNSAFE", ("failsafe engaged, came down but never switched its motors off"
+                                  if touchdown_speed is not None else "failsafe engaged but the drone did not land")
     elif mission_completed:
         verdict, why = "UNSAFE", "position error %.1f m (over the %.0f m limit) with no safety mode; landed %.0f m from home" % (
             drift_for_rules, PASS_DRIFT_M, landed_dist)

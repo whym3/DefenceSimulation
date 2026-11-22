@@ -65,7 +65,9 @@ def fly(fault="none", level=0, repeat=0, condition="delhi", wind_level="typical"
         v.set_mode("AUTO")
 
         alternatives = faults.param_alternatives(fault, level)
+        ramps = faults.ramps(fault, level)
         injected = not alternatives
+        inject_ms = ramp_ms = 0
         wall_deadline = time.time() + max_wall_s
         max_seq = 0
         ground_since = None  # sim time when the drone (truly) reached the ground while still armed
@@ -89,6 +91,12 @@ def fly(fault="none", level=0, repeat=0, condition="delhi", wind_level="typical"
                 fault_params = applied
                 meta["fault_injected_sim_s"] = v.sim_time_ms / 1000.0
                 injected = True
+                inject_ms = ramp_ms = v.sim_time_ms
+            # A spoofing drag: re-send the growing GPS offset once per simulated second.
+            if ramps and injected and v.sim_time_ms - ramp_ms >= 1000:
+                ramp_ms = v.sim_time_ms
+                for name, per_s in ramps.items():
+                    v.send_param(name, per_s * (ramp_ms - inject_ms) / 1000.0)
             if not v.armed:
                 break
         else:

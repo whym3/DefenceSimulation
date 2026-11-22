@@ -16,8 +16,8 @@ bash setup/build_ardupilot.sh   # clones ArduPilot Copter-4.7.3 and builds the s
 ```bash
 source ~/venv-drone/bin/activate
 cd <this repo>           # under WSL, a Windows folder is /mnt/c/...
-python demo.py          # 122 flights (Delhi + Ladakh, typical wind, all 12 fault families) + PDF report
-python demo.py --full   # the full 1,830-flight matrix + PDF report
+python demo.py          # 142 flights (Delhi + Ladakh, typical wind, all 14 fault families) + PDF report
+python demo.py --full   # the full 2,130-flight matrix + PDF report
 python tests/test_verdicts.py   # checks the scoring rules on made-up flights; no simulator needed
 ```
 
@@ -32,7 +32,7 @@ what goes wrong at each level, and the method and limitations.
 python run_one.py                                          # one baseline flight (Delhi, typical wind)
 python run_one.py --fault gps --level 5                    # one fault flight
 python run_one.py --condition ladakh --wind strong --fault barometer --level 2
-python run_batch.py                                        # everything: 3 conditions x 4 winds x 61 tests x repeats (1,830 flights)
+python run_batch.py                                        # everything: 3 conditions x 4 winds x 71 tests x repeats (2,130 flights)
 python run_batch.py --params my_drone.parm --model quad    # test a specific drone's ArduPilot parameter file
 python run_batch.py --conditions delhi --winds typical     # one condition and wind
 python run_batch.py --sensors compass --levels 4 5 --repeats 1 --parallel 4
@@ -78,7 +78,19 @@ levels per sensor. Each fault hits every unit of that sensor (both IMUs, all com
 | Accelerometer scale error | vertical ×1.02, ×1.05, ×1.1, ×1.15, ×1.2 |
 | Gyro scale error | rates +2, +5, +10, +15, +25% |
 
-Run a group with `python run_batch.py --group gradual` or `--group abrupt` (the default is `all`).
+**Electronic attack** (`group: ew`): GPS spoofing and jamming of the control link and GPS.
+
+| Fault family | Level 1 → 5 |
+|---|---|
+| GPS spoofing drag | position dragged north at 0.2, 0.5, 1, 2, 5 m/s, with a matching false velocity |
+| Electronic attack | control link jammed → GPS jammed → both jammed → control link jammed and GPS dead → control link jammed and GPS dragged at 2 m/s |
+
+The drag is the one fault that changes during the flight: the runner re-sends the growing GPS offset
+every simulated second. The electronic-attack levels are different scenarios, not one fault getting
+stronger. Both are modelled at the receiver's output, not as radio signals, and ground-station link
+loss is not included (ArduPilot ignores it unless `FS_GCS_ENABLE` is set).
+
+Run a group with `python run_batch.py --group gradual`, `--group abrupt` or `--group ew` (the default is `all`).
 Horizontal GPS noise has no simulator parameter in Copter-4.7.3, so it is not included yet.
 
 **Repeats.** The simulator's random generator has a fixed seed, so repeats differ by wind

@@ -151,6 +151,11 @@ The four-week plan for the first product is essentially complete.
     in calm wind, which had been flown only once per level because calm has no wind direction.
   - **Lesson:** a limit from one to three flights is a first estimate. Limits quoted to anyone
     should come from a refined batch.
+- **GPS-denied and electronic-attack faults added** (group `ew`): a GPS spoofing drag, which is
+  the first fault that changes during the flight, and control-link and GPS jamming alone and
+  together. Flown for both airframes with 7 extra repeats: 526 flights for the generic quad (first
+  batch on the MacBook) and 575 for the Callisto, every log complete. Reports:
+  `batches/ew-generic-120x` and `batches/ew-callisto-120x`. Results below.
 - **Working rule from now on:** when the MacBook is reachable, batches are split with it; results are
   copied back to the PC, verified, and then cleared from the Mac.
 
@@ -201,6 +206,36 @@ over every condition each drone can fly in.
   build up before landing: at 0.05 m/s the generic quad ends at about 10.3 m of height error, just
   over the 10 m limit. A fair comparison of drift faults needs a fixed time under fault.
 
+### Spoofing and jamming: both airframes (22 November 2026)
+
+Counts are flights in conditions the drone can fly in.
+
+| Test | Generic quad | Callisto |
+|---|---|---|
+| GPS dragged 0.2 m/s | 94 of 94 unsafe: follows it, about 46 m off | 114 of 114 unsafe: about 35 m off |
+| GPS dragged 0.5 to 2 m/s | 72 of 72 unsafe: 120 to 540 m off, some leave the geofence | 87 of 90 unsafe: 94 to 310 m off |
+| GPS dragged 5 m/s | 9 of 24 unsafe; a safety mode catches the rest | 18 of 30 unsafe |
+| Control link jammed | 52 of 52 return home after 1.0 s | 51 of 51 return home after 1.0 s |
+| GPS jammed | 10 of 59 unsafe | 21 of 72 unsafe |
+| Control link and GPS jammed | 1 of 31 unsafe | 16 of 51 unsafe |
+| Control link jammed, GPS dead | 45 of 45 safe | 65 of 65 safe |
+| Control link jammed, GPS dragged 2 m/s | 23 of 59 unsafe | 45 of 72 unsafe |
+
+- **Slow spoofing is not detected at all.** Neither airframe has a safe level: a drag of 0.2 m/s,
+  slower than walking, is followed for the whole flight with no safety mode. Only a 5 m/s drag is
+  caught, and not always. This is the clearest result in the project so far.
+- **A dead GPS is easier than a lying one.** Total GPS loss is handled in every flight; a jammed
+  receiver that still reports fails in one to three flights in ten.
+- **Control-link loss alone is handled every time.**
+- **The usual unsafe ending under jamming** is the drone coming down under its safety mode and then
+  sitting on the ground with motors running.
+- **On these tests the heavier airframe is not better**, unlike wind and compass faults.
+- **Open scoring question for the owner:** with the control link jammed and GPS dragged, a drone
+  "returns home" on the radio failsafe and lands under control about 190 m from its real home.
+  Today that scores SAFE FAIL, because it reacted in time, landed and stayed inside the geofence.
+  The report now states the landing distance. Decide whether landing far from where the drone
+  believes it is should count as unsafe.
+
 ### What this proves, and what it does not
 
 **Proves**
@@ -219,7 +254,8 @@ over every condition each drone can fly in.
 - An exact failure rate. After the extra repeats, a worst-case limit rests on 14 to 28 flights for
   one zone, which bounds the failure rate at about 10 to 19%, not at zero. Some fault levels fail in
   roughly one flight in five because the autopilot itself behaves in two ways.
-- Radio-level jamming. Faults are injected at the sensor, not as radio signals.
+- Radio-level jamming or spoofing. Faults are injected at the receiver's output, not as radio
+  signals, and ground-station link loss is not tested.
 - Group behaviour, combat effectiveness or value for money.
 
 ---
@@ -241,12 +277,13 @@ Details are in [README.md](README.md); developer notes are in [CLAUDE.md](CLAUDE
 ## Next steps
 
 ### Make the numbers defensible (short term)
-1. **GPS-denied faults:** slow GPS spoofing drag, radio-control loss and ground-link loss. These are
-   what the Army's post-2025 trials are reported to fail drones on, and they are the market opening.
+1. **Decide the spoofed-landing scoring question** above, then re-score.
 2. **Make drift faults comparable between drones:** hold the fault for a fixed time (or a fixed
    distance) instead of "until the mission ends", so a faster drone is not flattered.
-3. **Tuning study:** rerun the GPS and barometer faults with tighter EKF innovation gates and a faster
-   `FS_EKF_THRESH`, to show makers how much their settings would raise the safe limit.
+3. **Tuning study:** rerun the GPS, barometer and spoofing faults with tighter EKF innovation gates
+   and a faster `FS_EKF_THRESH`, to show makers how much their settings would raise the safe limit.
+   After the spoofing result this is the most valuable next piece: it turns "your drone fails" into
+   "and this setting fixes it", or shows that settings alone cannot.
 4. **Harder levels** for accelerometer bias and compass, whose breaking points are still unknown, and
    horizontal GPS noise (the simulator has no parameter for it, so the runner must drive it).
 5. **Investigate the compass anomaly** (unsafe at L2 in strong wind while L3 to L5 pass).
