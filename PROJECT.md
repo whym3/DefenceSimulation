@@ -1,6 +1,7 @@
 # Drone sensor-fault test tool: project overview
 
-*Last updated: 22 November 2026*
+*Last updated: 22 November 2026. This file is the running record: what has been achieved, what it
+proves, and what to do next. Update it whenever one of those changes.*
 
 ## What this project is
 
@@ -53,11 +54,11 @@ is finished.
 |---|---|---|
 | Flight software | **ArduPilot first** (Copter-4.7.3), PX4 later | ArduPilot's simulator can break every sensor at an adjustable strength; PX4's simulator mostly offers on/off GPS failures |
 | Drone type | **Quadcopter only** | Fits the time box; fixed-wing later |
-| Which drone | **Generic ArduPilot quadcopter** | No vendor yet; a maker's parameter file can replace it |
+| Which drone | **Generic ArduPilot quadcopter** by default; any drone's parameter file with `--params`, any frame model with `--model` | No vendor yet. First specific airframe flown: ArduPilot's Callisto model |
 | Pass | Mission completed, position error under **10 m** | Agreed with the project owner |
-| Safe fail | Safety mode switched on within **5 s**, then a safe landing, no fence breach | Agreed |
-| Unsafe | Fence breach, crash, more than **50 m** error with no safety mode, safety mode later than 5 s | Agreed |
-| Platform | Windows PC, simulator in **WSL2 Ubuntu 24.04** | Runs offline on one machine |
+| Safe fail | Safety mode no later than **5 s after the position error passes 10 m** (or before it gets that large), then a safe landing, no fence breach | Changed 22 Nov 2026: timed from fault injection, slow faults could never be caught "in time" |
+| Unsafe | Fence breach, crash, safety mode later than that, or over 10 m error with no safety mode | A crash or breach now counts even when the flight log is cut short |
+| Platform | Windows PC, simulator in **WSL2 Ubuntu 24.04**; also runs on an Apple-silicon Mac | Runs offline; zones can be split across machines |
 | Weather data | **NASA POWER** hourly data 2020–2024, cached locally | Free, no account, offline afterwards |
 
 ---
@@ -100,16 +101,16 @@ The four-week plan for the first product is essentially complete.
 - **One command:** `python demo.py` gives the report from a small set (52 flights then; 122 now that the abrupt faults are included); `--full` runs everything.
 - Fixed flight logs being cut short at high speed (affected 1.4% of flights). Incomplete logs are
   now marked ERROR instead of being judged.
-- **Validated against 197 real flights** from the RflyMAD dataset (PX4 quadcopters with injected
-  sensor faults). See [validation/RFLYMAD_VALIDATION.md](validation/RFLYMAD_VALIDATION.md):
-  - **our fault sizes are realistic:** real GPS faults are 47–67 m jumps (our L3 = 60 m); real compass
-    faults are 360–1,300 mGauss (our L3–L5 = 300–1,000); real barometer faults reach tens to hundreds
-    of metres, which our L3–L5 drift also reaches by the end of a flight;
-  - **real faults are mostly abrupt noise, ours are gradual drift and steady offsets.** PX4 rejected
-    the abrupt GPS and barometer faults; ArduPilot in our tests did not reject slow drift or steady
-    offsets. The gradual faults are the hard cases, which is worth keeping;
-  - **only 2 of 197 real flights triggered an automatic failsafe.** The safety pilot handled the
-    rest. That supports the tool's focus: what happens when no pilot is there to take over.
+- **Compared with 197 real flights** from the RflyMAD dataset (PX4 quadcopters with injected
+  sensor faults). See [validation/RFLYMAD_VALIDATION.md](validation/RFLYMAD_VALIDATION.md). The first
+  write-up claimed more than the data shows and was corrected on 22 November 2026:
+  - **what holds:** real noise faults are as large as our harsher levels (GPS jumps of 41 to 74 m
+    against our L3 = 60 m; compass 576 to 1,500 mGauss against our L5 = 1,000; barometer tens to
+    hundreds of metres). PX4 rejected the bad GPS readings in 29 of 43 flights and the bad barometer
+    readings in 41 of 45;
+  - **what does not hold:** the real flights say nothing about how fast a safety mode would react.
+    The faults were switched off after a median of 41 s and the mode changes seen are the scripted
+    test ending, not a reaction. Accelerometer and gyro fault sizes could not be measured.
 - **Abrupt faults added** (7 families: GPS large jump, barometer step and noise, compass noise and
   scale, accelerometer and gyro scale), with ranges matched to the real flights. 1,080 flights in
   `batches/abrupt-120x` (report included). Result: **GPS and barometer integrity are this drone's weak
@@ -118,20 +119,68 @@ The four-week plan for the first product is essentially complete.
   rejected the same kinds of fault in the real flights. Compass and gyro faults are handled at every
   level.
 
-### Main findings so far (generic quadcopter, simulation)
+### 22 November 2026: review, fixes, first full runs on new machines ✅
+- **Code review of the whole tool** and a market survey (India and worldwide). Outcome: build the
+  virtual-testing layer only for now; 3D viewers and command-and-control pictures are crowded markets.
+- **Scoring made fairer and safer:** reaction timed from when the fault becomes dangerous; crashes and
+  fence breaches no longer hidden by a cut-short log; a level with a flight that could not be judged
+  is no longer counted as safe (shown as "not verified").
+- **A specific drone can be tested:** `--params` loads its ArduPilot parameter file and `--model` its
+  frame model. The report names the file, its hash, the ArduPilot version and the tool commit.
+- **Tests added:** `tests/test_verdicts.py`, 11 checks of the scoring rules that need no simulator.
+- **Twice as fast:** flights were waiting 8 s for a log that never stops growing. Fixed; Delhi at
+  typical wind (183 flights) went from about 4.5 to 2.4 minutes with identical safe limits.
+- **Runs on two machines:** set up from scratch on a new Windows PC and on a MacBook (M1). The same
+  GPS-loss flight gave the same verdict on both (safety mode at 8.0 s and 8.1 s).
+- **Full matrix flown, one batch per zone:** 1,830 flights, every log complete. Delhi and Ladakh on
+  the PC, Rajasthan on the MacBook. Reports: `batches/delhi-120x`, `batches/ladakh-120x`,
+  `batches/rajasthan-120x` (each has `report.pdf`).
+- **First specific airframe:** the Callisto, a 32.5 kg heavy-lift octocopter whose physics model and
+  settings ship with ArduPilot, flies the mission in Delhi and Ladakh. On GPS loss it returns home on
+  its dead-reckoning failsafe after 10.5 s; the generic quad lands on its EKF failsafe after 8 s. Its
+  full 1,830-flight matrix is being flown; results to be added here.
 
-| Sensor | Safe up to (worst case) | What goes wrong beyond |
+### Main findings (generic quadcopter, simulation, 22 November 2026 batches)
+
+Worst case over the three zones and every wind the drone can fly in.
+
+| Sensor fault | Safe up to | What goes wrong beyond |
 |---|---|---|
-| GPS | L1: 5 m position jump | At 20 m and 60 m jumps it accepts the false position and flies the whole route shifted, with no safety mode. GPS dead: safety mode after about 8 s (limit 5 s) |
-| Accelerometer | L4: 1.2 m/s² bias (L5 in normal wind) | In strong wind, flies into the ground at 2.5 m/s² |
-| Gyro | L3: 0.03 rad/s bias | Loses control and crashes at 0.08 rad/s |
-| Compass | L1 (isolated: 2 flights) | Every harsher level passed; needs investigation |
-| Barometer | none of the tested levels | Even 0.05 m/s drift: it sinks while believing it holds height, and flies into the ground |
-| Wind | — | Cannot fly the mission at all in 12–13 m/s at Delhi or Jaisalmer; manages 12 m/s in Ladakh, where thin air pushes less |
+| Barometer slow drift | none of the tested levels | Even 0.05 m/s: follows a false height with no safety mode |
+| GPS large jump (100 m and up) | none of the tested levels | Follows the false position; at 700 m and more the fence alarm lands it, and about one flight in five then sits on the ground with motors running |
+| GPS gradual | L1: 5 m jump | At 20 m it flies the route shifted, with no safety mode. GPS dead: safety mode after 8 s and a safe landing |
+| Barometer step | L1: 5 m | From 20 m: follows a false height |
+| Barometer noise | L2: ±5 m | From ±20 m: follows a false height |
+| Gyro bias | L3: 0.03 rad/s | Loses control and crashes at 0.08 rad/s |
+| Accelerometer bias | L3: 0.6 m/s² (L5 in most conditions) | Follows a false position |
+| Accelerometer scale | L3: ×1.1 | Flies into the ground at ×1.15 |
+| Compass offset | L1 (isolated: L5 in most conditions) | Left the geofence in strong or extreme wind; harsher levels passed |
+| Compass noise, compass scale, gyro scale | all tested levels | — |
+| Wind (no fault) | — | Cannot fly the mission at 12.2 m/s in Delhi or 13.3 m/s in Jaisalmer. Flies at 12.1 m/s in Ladakh: the air there is 63% as dense, so the wind pushes about as hard as 9.6 m/s in Delhi |
 
-*Confirmed by the final week-4 batch (`batches/week4-final-120x`): 780 flights, every flight log
-complete, and safe limits identical to week 3 in all 60 sensor groups. The full report is
-[batches/week4-final-120x/report.pdf](batches/week4-final-120x/report.pdf).*
+Verdict counts: Delhi 258 pass, 32 safe fail, 140 unsafe, 180 not tested (extreme wind); Ladakh 375,
+54, 181, 0; Rajasthan 260, 30, 140, 180.
+
+### What this proves, and what it does not
+
+**Proves**
+- The method works end to end: one autopilot, one broken sensor, a chosen place and wind, an
+  automatic verdict, and a report, 1,830 times in under an hour with nobody at the controls.
+- It finds things a buyer would act on: for this drone, GPS and barometer integrity are the weak
+  points and compass and gyro scale faults are not a concern.
+- Environment changes the answer: wind decides whether the mission can be flown at all, and thin air
+  shifts that limit.
+- Two airframes give different answers to the same fault, which is the basis of a vendor comparison.
+- Results reproduce across machines and operating systems.
+
+**Does not prove**
+- Anything about a product on sale. The generic quad and the Callisto model are both ArduPilot's own.
+- Real-world accuracy. No result has been checked against a real flight of the same drone.
+- A failure rate. Each limit rests on three repeats, and some fault levels fail in roughly one flight
+  in five because the autopilot itself behaves in two ways (8 of 183 verdicts differed between two
+  identical runs).
+- Radio-level jamming. Faults are injected at the sensor, not as radio signals.
+- Group behaviour, combat effectiveness or value for money.
 
 ---
 
@@ -151,34 +200,34 @@ Details are in [README.md](README.md); developer notes are in [CLAUDE.md](CLAUDE
 
 ## Next steps
 
-### Finish the first product (short term)
-1. ~~Add abrupt fault types~~ (done, see above). Remaining: **horizontal GPS noise**, which needs the
-   runner to drive it because the simulator has no parameter for it. Then a **tuning study**: rerun the
-   GPS and barometer faults with tighter EKF innovation gates and a faster `FS_EKF_THRESH`, to show
-   makers how much their settings would raise the safe limit.
-2. **Harden the fault levels.** The accelerometer and compass passed almost every level, so the
-   breaking point is still unknown. Add harsher levels such as larger bias, compass interference from
-   motor current, and local magnetic disturbance.
-   - **Licence check:** RflyMAD is for non-commercial use; ask Beihang's Reliable Flight Control group
-     before citing the validation in sales or certification material.
-3. **Investigate the compass anomaly.** Two flights at level 2 left the geofence in strong wind while
-   levels 3–5 passed. Find out whether it's a real failure mode or a simulator artefact.
-4. **More repeats for GPS jamming.** Jamming uses random data; about 10 repeats would give a reliable
-   failure rate instead of a 3-repeat snapshot.
-5. **Cold weather.** Add a Ladakh winter condition (−24 °C) together with a cold-battery model;
-   battery capacity loss in the cold is not modelled yet.
-6. **Put the code under version control** (git) and tidy old trial batches.
+### Make the numbers defensible (short term)
+1. **Confidence numbers.** More repeats at the levels around each safe limit, and a stated confidence
+   beside each limit, because some levels fail one flight in five.
+2. **GPS-denied faults:** slow GPS spoofing drag, radio-control loss and ground-link loss. These are
+   what the Army's post-2025 trials are reported to fail drones on, and they are the market opening.
+3. **Read the Callisto results** against the generic quad and write up the differences as a sample
+   vendor comparison.
+4. **Tuning study:** rerun the GPS and barometer faults with tighter EKF innovation gates and a faster
+   `FS_EKF_THRESH`, to show makers how much their settings would raise the safe limit.
+5. **Harder levels** for accelerometer bias and compass, whose breaking points are still unknown, and
+   horizontal GPS noise (the simulator has no parameter for it, so the runner must drive it).
+6. **Investigate the compass anomaly** (unsafe at L2 in strong wind while L3 to L5 pass).
+7. **Score the 120 m geofence ceiling**; today only the 600 m circle is checked.
+8. **Cold weather:** a Ladakh winter condition (−24 °C) with a cold-battery model.
 
 ### First user (the rule for moving on)
-7. **Find a first user:** a drone maker or a unit willing to run the tool on *their* drone. Ask for
-   the ArduPilot parameter file plus weight, motors, propellers and battery, so the report describes
-   their aircraft instead of a generic one.
-8. Shape the report to match the certification scheme's wording, so it can go into a type-certification
-   file as supporting evidence.
+9. **Talk to five drone makers** with a sample report in hand. Ask whether they would pay for a
+   pre-trial readiness report and which autopilot they use; that decides whether ArduPilot-only is
+   enough. Ask for the parameter file plus weight, motors, propellers and battery.
+10. **Shape the report** to match the certification scheme's wording, so it can go into a
+    type-certification file as supporting evidence.
+11. **Before any sales use:** confirm the single-source press claims about failed GPS-denied trials,
+    and take legal advice on the non-commercial RflyMAD data, on GPL duties if ArduPilot binaries are
+    shipped, and on ArduPilot's stance on military use. Choose a licence for this repository.
 
 ### After that (only once someone is using it)
-9. **PX4 support**, since many Indian makers use PX4.
-10. **Fixed-wing and VTOL** drones.
-11. **Layer 1: cameras.** Normal and thermal camera tests in dust, fog, rain and darkness. This is
+12. **PX4 support**, since many Indian makers use PX4.
+13. **Fixed-wing and VTOL** drones.
+14. **Layer 1: cameras.** Normal and thermal camera tests in dust, fog, rain and darkness. This is
     where the Unreal Engine setup (already connected) comes in, for realistic scenes.
-12. **Layer 2: vendor scorecard.** Several drones through the same tests, side by side.
+15. **Layer 2: vendor scorecard.** Several drones through the same tests, side by side.
