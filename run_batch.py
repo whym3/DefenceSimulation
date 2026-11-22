@@ -17,6 +17,7 @@ import datetime
 import json
 import os
 import queue
+import shutil
 import subprocess
 import sys
 import threading
@@ -200,6 +201,10 @@ def main(argv=None):
     out = args.out or os.path.join(HERE, "batches", datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
     os.makedirs(out, exist_ok=True)
     jobs = build_jobs(args.sensors, args.levels, args.repeats, args.conditions, args.winds)
+    # Each flight keeps a flight log of about 25 MB. A disk that fills mid-batch breaks the simulators.
+    need_gb, free_gb = len(jobs) * 25 / 1024, shutil.disk_usage(out).free / 2 ** 30
+    if need_gb > free_gb:
+        p.error("about %.0f GB of flight logs needed in %s, only %.0f GB free" % (need_gb, out, free_gb))
     print("%d flights on %d simulators at %dx -> %s" % (len(jobs), args.parallel, args.speedup, out), flush=True)
     for c in args.conditions:
         d = conditions.describe(c)

@@ -7,7 +7,8 @@ import time
 
 ARDUPILOT_DIR = os.path.expanduser(os.environ.get("ARDUPILOT_DIR", "~/ardupilot"))
 ARDUCOPTER_BIN = os.path.join(ARDUPILOT_DIR, "build/sitl/bin/arducopter")
-COPTER_DEFAULTS = os.path.join(ARDUPILOT_DIR, "Tools/autotest/default_params/copter.parm")
+LOG_TRICKLE_BYTES = 16 * 1024  # log growth below this per settle window counts as "stopped growing"
+COPTER_DEFAULTS =os.path.join(ARDUPILOT_DIR, "Tools/autotest/default_params/copter.parm")
 
 
 def provenance(model="quad", params=None):
@@ -73,16 +74,17 @@ class Sitl:
         120x: logs ending with the drone still 10 m up).
         """
         deadline = time.time() + timeout_s
-        last_size, stable_since = -1, None
+        base_size, stable_since = -1, None
         while time.time() < deadline:
             logs = self.dataflash_logs()
             size = os.path.getsize(logs[-1]) if logs else 0
-            if size == last_size:
-                stable_since = stable_since or time.time()
+            # A disarmed drone still logs under 1 kB every few tenths of a second, so the file never
+            # stops growing; the buffered flight data arrives at hundreds of kB per 0.1 s.
+            if stable_since is not None and size - base_size < LOG_TRICKLE_BYTES:
                 if time.time() - stable_since >= settle_s:
                     return True
             else:
-                last_size, stable_since = size, None
+                base_size, stable_since = size, time.time()
             time.sleep(0.1)
         return False
 
