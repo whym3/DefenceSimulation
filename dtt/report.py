@@ -84,6 +84,11 @@ def cause(reason):
     return r[:60] or "unknown"
 
 
+def failure_bound(n):
+    """With 0 failures in n flights, the failure rate is below this at 95% confidence."""
+    return 1 - 0.05 ** (1.0 / n)
+
+
 def flyable_groups(env):
     return [k for k, g in env["groups"].items() if all(v in OK for v in g["baseline"])]
 
@@ -170,9 +175,13 @@ def sensor_summary(rows, env, sensor):
                     causes[cause(r["reason"])] += 1
     # Isolated failures: a milder level fails somewhere but a harsher level is safe everywhere.
     # Such a limit rests on a few flights and should be investigated before it is relied on.
+    # It only applies when few flights failed: GPS L2 (a 20 m jump) failing in every flight while
+    # L5 (receiver dead) is handled is two different faults, not an isolated failure.
     isolated = False
-    if first_bad:
-        n_bad = sum(causes.values())
+    n_bad = sum(causes.values())
+    n_first_bad = sum(1 for r in rows if r["fault"] == sensor and r["level"] == first_bad
+                      and "%s/%s" % (r["condition"], r["wind"]) in set(flyable))
+    if first_bad and 4 * n_bad <= n_first_bad:
         for lv in faults.LEVELS:
             if lv <= first_bad:
                 continue
@@ -181,9 +190,9 @@ def sensor_summary(rows, env, sensor):
             if vs and all(v in OK for v in vs):
                 isolated = True
                 break
-    else:
-        n_bad = 0
-    return dict(worst=worst, best=best, first_bad=first_bad, n_bad=n_bad, isolated=isolated,
+    n_safe = sum(1 for r in rows if r["fault"] == sensor and r["level"] == worst
+                 and "%s/%s" % (r["condition"], r["wind"]) in set(flyable))
+    return dict(worst=worst, best=best, first_bad=first_bad, n_bad=n_bad, isolated=isolated, n_safe=n_safe,
                 cause=causes.most_common(1)[0][0] if causes else None)
 
 
@@ -255,7 +264,9 @@ def build(batch, out_path=None):
                         "in %d combinations of place, temperature and wind. <b>Safe up to</b> is the most severe "
                         "level at which the drone either finished its mission correctly or switched to a safety "
                         "mode in time and landed &mdash; in <i>every</i> repeat and <i>every</i> flyable "
-                        "condition (worst case). The best case over conditions is shown in brackets." % len(env["groups"]), B),
+                        "condition (worst case). The best case over conditions is shown in brackets. "
+                        "The small print gives how many flights that level rests on and, with none of them "
+                        "failing, the highest failure rate still consistent with that at 95%% confidence." % len(env["groups"]), B),
               Spacer(1, 2 * mm)]
     data = [["Sensor", "Safe up to (worst case)", "Fails at", "What goes wrong first"]]
     tints = []
@@ -272,6 +283,9 @@ def build(batch, out_path=None):
             fail_txt = "L%d not verified: its flights could not be judged" % sm["first_bad"]
         if sm["best"] is not None and sm["best"] != sm["worst"]:
             safe_txt += " (best: L%d)" % sm["best"]
+        if sm["worst"] and sm["n_safe"]:
+            safe_txt += "<br/><font size=7 color='#555555'>%d of %d flights safe: failure rate under %.0f%%</font>" % (
+                sm["n_safe"], sm["n_safe"], 100 * failure_bound(sm["n_safe"]))
         what = sm["cause"] or "-"
         if sm["isolated"]:
             what += " <i>(isolated: %d flight%s; harsher levels passed - investigate)</i>" % (

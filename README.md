@@ -101,6 +101,17 @@ python run_batch.py --model "octa-quad:@ROMFS/models/Callisto.json" \
     --params ~/ardupilot/Tools/autotest/models/Callisto.param --out batches/callisto-120x
 ```
 
+**More repeats where they matter.** A limit from three flights is a first estimate. To firm it up:
+
+```bash
+python run_batch.py --refine batches/<name> --repeats 7    # add --model/--params if the batch used them
+```
+
+This flies 7 more repeats at each sensor's limit level and the level above it, each from a new wind
+direction, adds them to the batch and rebuilds its summary, limits and report. The report then shows
+beside each limit how many flights it rests on and the failure rate still possible with none of them
+failing (28 safe flights: under 10%).
+
 **Run-to-run variation.** Some verdicts change between identical runs because the autopilot itself
 behaves in two ways. Example: after a 700 m GPS jump the fence alarm lands the drone; in about four
 flights in five it then switches its motors off within 3 s (SAFE_FAIL), and in the rest it sits on

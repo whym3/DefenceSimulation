@@ -100,6 +100,25 @@ def test_envelope_unsafe_level_stops_the_limit():
     assert (e["safe_up_to_level"], e["first_unsafe_level"], e["not_verified_level"]) == (1, 2, None)
 
 
+def test_refine_jobs_fly_the_limit_level_and_the_one_above():
+    env = dict(groups={
+        "delhi/calm": dict(condition="delhi", wind="calm", baseline=["PASS"], sensors={
+            "gps": dict(safe_up_to_level=1), "compass": dict(safe_up_to_level=5), "barometer": dict(safe_up_to_level=0)}),
+        "delhi/extreme": dict(condition="delhi", wind="extreme", baseline=["UNSAFE"], sensors={
+            "gps": dict(safe_up_to_level=None)})})
+    jobs = run_batch.refine_jobs(env, 2)
+    got = sorted({(j["fault"], j["level"]) for j in jobs})
+    assert got == [("barometer", 1), ("compass", 5), ("gps", 1), ("gps", 2)], got
+    assert sorted({j["repeat"] for j in jobs}) == [3, 4] and len(jobs) == 8
+    assert {j["wind"] for j in jobs} == {"calm"}
+
+
+def test_extra_repeats_get_new_wind_directions():
+    from dtt import faults
+    dirs = [faults.wind_for_repeat(n, 5, 1)["SIM_WIND_DIR"] for n in range(10)]
+    assert dirs[:3] == [0.0, 120.0, 240.0] and len(set(dirs)) == 10, dirs
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):

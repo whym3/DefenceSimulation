@@ -67,8 +67,10 @@ def describe(sensor, level):
 def wind_for_repeat(repeat, speed_ms, turbulence_ms):
     """SIM_* wind parameters: the given speed and turbulence, from repeat N's direction."""
     dirs = REPEATS["wind_directions_deg"]
+    # Repeats beyond the listed directions step by the golden angle, so each one is a new direction.
+    direction = dirs[repeat] if repeat < len(dirs) else (repeat * 137.508) % 360
     return {
         "SIM_WIND_SPD": float(speed_ms),
-        "SIM_WIND_DIR": float(dirs[repeat % len(dirs)]),
+        "SIM_WIND_DIR": float(direction),
         "SIM_WIND_TURB": float(turbulence_ms),
     }

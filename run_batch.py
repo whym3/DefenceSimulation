@@ -52,6 +52,21 @@ def build_jobs(sensors, levels, repeats, conds, winds):
     return jobs
 
 
+def refine_jobs(env, extra):
+    """Extra repeats where they matter: each sensor's safe-limit level and the level above it, in
+    every group whose baseline flies. New repeats are numbered from 3, after the standard three."""
+    jobs = []
+    for g in env["groups"].values():
+        if not all(v in OK_VERDICTS for v in g["baseline"]):
+            continue
+        for s, e in g["sensors"].items():
+            for lv in (e["safe_up_to_level"], e["safe_up_to_level"] + 1):
+                if lv in faults.LEVELS:
+                    jobs += [dict(condition=g["condition"], wind=g["wind"], fault=s, level=lv, repeat=r)
+                             for r in range(3, 3 + extra)]
+    return jobs
+
+
 def label(j):
     return "%-9s %-7s %-13s L%d r%d" % (j["condition"], j["wind"], j["fault"], j["level"], j["repeat"])
 
@@ -191,6 +206,9 @@ def main(argv=None):
     p.add_argument("--no-report", action="store_true", help="skip building report.pdf at the end")
     p.add_argument("--model", default="quad", help="SITL frame model of the drone under test")
     p.add_argument("--params", default=None, help="parameter file of the drone under test")
+    p.add_argument("--refine", metavar="BATCH", default=None,
+                   help="add --repeats more flights at each sensor's limit level and the one above it "
+                        "to an existing batch, then rebuild its summary, limits and report")
     args = p.parse_args(argv)
     if args.params and not os.path.isfile(args.params):
         p.error("--params file not found: %s" % args.params)
@@ -198,9 +216,29 @@ def main(argv=None):
     if args.sensors is None:
         args.sensors = faults.sensors_in(args.group)
 
-    out = args.out or os.path.join(HERE, "batches", datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
-    os.makedirs(out, exist_ok=True)
-    jobs = build_jobs(args.sensors, args.levels, args.repeats, args.conditions, args.winds)
+    vehicle = provenance(args.model, args.params)
+    old_rows, old_wall_s = [], 0.0
+    if args.refine:
+        out = args.refine
+        with open(os.path.join(out, "envelope.json")) as f:
+            old_env = json.load(f)
+        with open(os.path.join(out, "summary.csv")) as f:
+            old_rows = [dict(r, level=int(r["level"]), repeat=int(r["repeat"])) for r in csv.DictReader(f)]
+        # The extra flights must be the same drone as the batch they are added to.
+        same = ("model", "params_sha256")
+        if [(old_env.get("vehicle") or {}).get(k) for k in same] != [vehicle.get(k) for k in same]:
+            p.error("--model/--params do not match the batch's drone: %s" % old_env.get("vehicle"))
+        if any(r["repeat"] >= 3 for r in old_rows):
+            p.error("%s already has extra repeats" % out)
+        jobs = refine_jobs(old_env, args.repeats)
+        old_wall_s = 60.0 * (old_env.get("wall_minutes") or 0)
+        args.sensors = [s for s in faults.SENSORS if any(r["fault"] == s for r in old_rows)]
+        args.levels = sorted({r["level"] for r in old_rows if r["fault"] != "none"})
+        args.conditions = [c for c in conditions.CONDITIONS if any(r["condition"] == c for r in old_rows)]
+    else:
+        out = args.out or os.path.join(HERE, "batches", datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
+        os.makedirs(out, exist_ok=True)
+        jobs = build_jobs(args.sensors, args.levels, args.repeats, args.conditions, args.winds)
     # Each flight keeps a flight log of about 25 MB. A disk that fills mid-batch breaks the simulators.
     need_gb, free_gb = len(jobs) * 25 / 1024, shutil.disk_usage(out).free / 2 ** 30
     if need_gb > free_gb:
@@ -228,7 +266,7 @@ def main(argv=None):
             say("  progress: %d/%d done (%d%%), %.1f min elapsed, about %.1f min left" % (
                 n, len(jobs), 100 * n // len(jobs), elapsed / 60, eta / 60))
 
-    write_outputs(rows, out, args.sensors, args.levels, time.time() - t0, provenance(args.model, args.params))
+    write_outputs(old_rows + rows, out, args.sensors, args.levels, old_wall_s + time.time() - t0, vehicle)
     print("done in %.1f min; summary.csv and envelope.json in %s" % ((time.time() - t0) / 60, out))
     if not args.no_report:
         from dtt import report

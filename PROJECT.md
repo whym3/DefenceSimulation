@@ -140,6 +140,17 @@ The four-week plan for the first product is essentially complete.
   its dead-reckoning failsafe after 10.5 s; the generic quad lands on its EKF failsafe after 8 s.
 - **Callisto full matrix flown:** 1,830 flights in 19 minutes on the PC, every log complete
   (`batches/callisto-120x/report.pdf`). 1,122 pass, 178 safe fail, 530 unsafe. Comparison below.
+- **Confidence numbers added.** `run_batch.py --refine <batch> --repeats N` flies N more repeats at
+  each sensor's limit level and the level above it, each from a new wind direction, and the report
+  prints beside every limit how many flights it rests on and the failure rate that is still possible
+  ("28 of 28 flights safe: failure rate under 10%"). All four batches were refined with 7 extra
+  repeats: 2,828 more flights, Rajasthan on the MacBook and the rest on the PC, every log complete.
+  - **Generic quad:** no worst-case limit changed. The three-repeat limits held.
+  - **Callisto:** eight per-condition limits dropped by one level, and the worst case for compass
+    scale went from L5 to L4 (1 unsafe flight in 10 in Delhi's extreme wind). Seven of the eight were
+    in calm wind, which had been flown only once per level because calm has no wind direction.
+  - **Lesson:** a limit from one to three flights is a first estimate. Limits quoted to anyone
+    should come from a refined batch.
 - **Working rule from now on:** when the MacBook is reachable, batches are split with it; results are
   copied back to the PC, verified, and then cleared from the Mac.
 
@@ -166,7 +177,8 @@ Verdict counts: Delhi 258 pass, 32 safe fail, 140 unsafe, 180 not tested (extrem
 
 ### Generic quad against Callisto: a first vendor-style comparison
 
-Same 1,830 tests, same scoring, two airframes. Worst case over every condition each drone can fly in.
+Same 1,830 tests, same scoring, two airframes, plus 7 extra repeats around each limit. Worst case
+over every condition each drone can fly in.
 
 | Test | Generic quad | Callisto (32.5 kg octocopter) |
 |---|---|---|
@@ -174,12 +186,13 @@ Same 1,830 tests, same scoring, two airframes. Worst case over every condition e
 | Compass offset | L1 (leaves the geofence in strong wind) | L5: safe at every level |
 | Accelerometer bias | L3 | L4; at L5 it leaves the geofence |
 | Barometer slow drift | none | L1 (0.05 m/s) **see note** |
-| GPS gradual | L1 (5 m jump) | L1; up to L3 in calm Ladakh |
-| GPS large jump | none | none; up to L2 in calm Delhi |
+| GPS gradual | L1 (5 m jump) | L1; up to L2 in calm Ladakh |
+| GPS large jump | none | none; L1 in calm Delhi |
 | Gyro bias | L3; beyond it leaves the geofence | L3; beyond it hits the ground at 12.7 m/s |
 | Accelerometer scale | L3; beyond it flies into the ground | L3; beyond it does not land |
 | Barometer step, barometer noise | L1, L2 | L1, L2 |
-| Compass noise, compass scale, gyro scale | all levels | all levels |
+| Compass scale | all levels | L4 (1 unsafe flight in 10 at L5, Delhi extreme wind) |
+| Compass noise, gyro scale | all levels | all levels |
 
 - **What the comparison shows:** the heavier airframe handles wind and compass faults much better,
   and both share the same weak points: GPS and barometer integrity.
@@ -203,9 +216,9 @@ Same 1,830 tests, same scoring, two airframes. Worst case over every condition e
 **Does not prove**
 - Anything about a product on sale. The generic quad and the Callisto model are both ArduPilot's own.
 - Real-world accuracy. No result has been checked against a real flight of the same drone.
-- A failure rate. Each limit rests on three repeats, and some fault levels fail in roughly one flight
-  in five because the autopilot itself behaves in two ways (8 of 183 verdicts differed between two
-  identical runs).
+- An exact failure rate. After the extra repeats, a worst-case limit rests on 14 to 28 flights for
+  one zone, which bounds the failure rate at about 10 to 19%, not at zero. Some fault levels fail in
+  roughly one flight in five because the autopilot itself behaves in two ways.
 - Radio-level jamming. Faults are injected at the sensor, not as radio signals.
 - Group behaviour, combat effectiveness or value for money.
 
@@ -228,33 +241,31 @@ Details are in [README.md](README.md); developer notes are in [CLAUDE.md](CLAUDE
 ## Next steps
 
 ### Make the numbers defensible (short term)
-1. **Confidence numbers.** More repeats at the levels around each safe limit, and a stated confidence
-   beside each limit, because some levels fail one flight in five.
-2. **GPS-denied faults:** slow GPS spoofing drag, radio-control loss and ground-link loss. These are
+1. **GPS-denied faults:** slow GPS spoofing drag, radio-control loss and ground-link loss. These are
    what the Army's post-2025 trials are reported to fail drones on, and they are the market opening.
-3. **Make drift faults comparable between drones:** hold the fault for a fixed time (or a fixed
+2. **Make drift faults comparable between drones:** hold the fault for a fixed time (or a fixed
    distance) instead of "until the mission ends", so a faster drone is not flattered.
-4. **Tuning study:** rerun the GPS and barometer faults with tighter EKF innovation gates and a faster
+3. **Tuning study:** rerun the GPS and barometer faults with tighter EKF innovation gates and a faster
    `FS_EKF_THRESH`, to show makers how much their settings would raise the safe limit.
-5. **Harder levels** for accelerometer bias and compass, whose breaking points are still unknown, and
+4. **Harder levels** for accelerometer bias and compass, whose breaking points are still unknown, and
    horizontal GPS noise (the simulator has no parameter for it, so the runner must drive it).
-6. **Investigate the compass anomaly** (unsafe at L2 in strong wind while L3 to L5 pass).
-7. **Score the 120 m geofence ceiling**; today only the 600 m circle is checked.
-8. **Cold weather:** a Ladakh winter condition (−24 °C) with a cold-battery model.
+5. **Investigate the compass anomaly** (unsafe at L2 in strong wind while L3 to L5 pass).
+6. **Score the 120 m geofence ceiling**; today only the 600 m circle is checked.
+7. **Cold weather:** a Ladakh winter condition (−24 °C) with a cold-battery model.
 
 ### First user (the rule for moving on)
-9. **Talk to five drone makers** with a sample report in hand. Ask whether they would pay for a
+8. **Talk to five drone makers** with a sample report in hand. Ask whether they would pay for a
    pre-trial readiness report and which autopilot they use; that decides whether ArduPilot-only is
    enough. Ask for the parameter file plus weight, motors, propellers and battery.
-10. **Shape the report** to match the certification scheme's wording, so it can go into a
+9. **Shape the report** to match the certification scheme's wording, so it can go into a
     type-certification file as supporting evidence.
-11. **Before any sales use:** confirm the single-source press claims about failed GPS-denied trials,
+10. **Before any sales use:** confirm the single-source press claims about failed GPS-denied trials,
     and take legal advice on the non-commercial RflyMAD data, on GPL duties if ArduPilot binaries are
     shipped, and on ArduPilot's stance on military use. Choose a licence for this repository.
 
 ### After that (only once someone is using it)
-12. **PX4 support**, since many Indian makers use PX4.
-13. **Fixed-wing and VTOL** drones.
-14. **Layer 1: cameras.** Normal and thermal camera tests in dust, fog, rain and darkness. This is
+11. **PX4 support**, since many Indian makers use PX4.
+12. **Fixed-wing and VTOL** drones.
+13. **Layer 1: cameras.** Normal and thermal camera tests in dust, fog, rain and darkness. This is
     where the Unreal Engine setup (already connected) comes in, for realistic scenes.
-15. **Layer 2: vendor scorecard.** Several drones through the same tests, side by side.
+14. **Layer 2: vendor scorecard.** Several drones through the same tests, side by side.
