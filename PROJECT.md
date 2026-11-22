@@ -137,8 +137,11 @@ The four-week plan for the first product is essentially complete.
   `batches/rajasthan-120x` (each has `report.pdf`).
 - **First specific airframe:** the Callisto, a 32.5 kg heavy-lift octocopter whose physics model and
   settings ship with ArduPilot, flies the mission in Delhi and Ladakh. On GPS loss it returns home on
-  its dead-reckoning failsafe after 10.5 s; the generic quad lands on its EKF failsafe after 8 s. Its
-  full 1,830-flight matrix is being flown; results to be added here.
+  its dead-reckoning failsafe after 10.5 s; the generic quad lands on its EKF failsafe after 8 s.
+- **Callisto full matrix flown:** 1,830 flights in 19 minutes on the PC, every log complete
+  (`batches/callisto-120x/report.pdf`). 1,122 pass, 178 safe fail, 530 unsafe. Comparison below.
+- **Working rule from now on:** when the MacBook is reachable, batches are split with it; results are
+  copied back to the PC, verified, and then cleared from the Mac.
 
 ### Main findings (generic quadcopter, simulation, 22 November 2026 batches)
 
@@ -160,6 +163,30 @@ Worst case over the three zones and every wind the drone can fly in.
 
 Verdict counts: Delhi 258 pass, 32 safe fail, 140 unsafe, 180 not tested (extreme wind); Ladakh 375,
 54, 181, 0; Rajasthan 260, 30, 140, 180.
+
+### Generic quad against Callisto: a first vendor-style comparison
+
+Same 1,830 tests, same scoring, two airframes. Worst case over every condition each drone can fly in.
+
+| Test | Generic quad | Callisto (32.5 kg octocopter) |
+|---|---|---|
+| Extreme wind, no fault | Cannot fly in Delhi (12.2 m/s) or Rajasthan (13.3 m/s) | Flies the mission in all three zones |
+| Compass offset | L1 (leaves the geofence in strong wind) | L5: safe at every level |
+| Accelerometer bias | L3 | L4; at L5 it leaves the geofence |
+| Barometer slow drift | none | L1 (0.05 m/s) **see note** |
+| GPS gradual | L1 (5 m jump) | L1; up to L3 in calm Ladakh |
+| GPS large jump | none | none; up to L2 in calm Delhi |
+| Gyro bias | L3; beyond it leaves the geofence | L3; beyond it hits the ground at 12.7 m/s |
+| Accelerometer scale | L3; beyond it flies into the ground | L3; beyond it does not land |
+| Barometer step, barometer noise | L1, L2 | L1, L2 |
+| Compass noise, compass scale, gyro scale | all levels | all levels |
+
+- **What the comparison shows:** the heavier airframe handles wind and compass faults much better,
+  and both share the same weak points: GPS and barometer integrity.
+- **Note on barometer drift:** the Callisto's better result is partly an effect of the test, not of
+  the drone. It flies the route faster (about 272 s against 353 s), so a slow drift has less time to
+  build up before landing: at 0.05 m/s the generic quad ends at about 10.3 m of height error, just
+  over the 10 m limit. A fair comparison of drift faults needs a fixed time under fault.
 
 ### What this proves, and what it does not
 
@@ -205,8 +232,8 @@ Details are in [README.md](README.md); developer notes are in [CLAUDE.md](CLAUDE
    beside each limit, because some levels fail one flight in five.
 2. **GPS-denied faults:** slow GPS spoofing drag, radio-control loss and ground-link loss. These are
    what the Army's post-2025 trials are reported to fail drones on, and they are the market opening.
-3. **Read the Callisto results** against the generic quad and write up the differences as a sample
-   vendor comparison.
+3. **Make drift faults comparable between drones:** hold the fault for a fixed time (or a fixed
+   distance) instead of "until the mission ends", so a faster drone is not flattered.
 4. **Tuning study:** rerun the GPS and barometer faults with tighter EKF innovation gates and a faster
    `FS_EKF_THRESH`, to show makers how much their settings would raise the safe limit.
 5. **Harder levels** for accelerometer bias and compass, whose breaking points are still unknown, and

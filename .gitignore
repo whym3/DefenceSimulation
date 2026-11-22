@@ -3,3 +3,5 @@ __pycache__/
 runs/
 batches/
 *.BIN
+# Claude memory notes (a local link; holds machine addresses, keep off GitHub)
+memory/
