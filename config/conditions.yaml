@@ -1,0 +1,40 @@
+# Test conditions: where the drone flies, how hot it is, and how windy.
+#
+# Weather statistics come from NASA POWER (hourly, 2020-2024), fetched once by
+# tools/fetch_weather.py and cached in data/weather/, so tests run offline.
+#
+# Heat and altitude: ArduPilot's quadcopter model makes air thinner with altitude but ignores
+# temperature. Each condition is therefore flown from its DENSITY ALTITUDE: the height in the
+# standard atmosphere that has the same air density as the real place at that temperature.
+
+sites:
+  delhi:
+    name: Delhi (baseline)
+    lat: 28.6139
+    lon: 77.2090
+    elevation_m: 216      # approximate ground height
+  leh:
+    name: Leh, Ladakh
+    lat: 34.1526
+    lon: 77.5770
+    elevation_m: 3500     # approximate; Leh town
+  jaisalmer:
+    name: Jaisalmer, Rajasthan
+    lat: 26.9157
+    lon: 70.9083
+    elevation_m: 225      # approximate
+
+# Each condition = a site + a temperature taken from that site's weather statistics.
+# temperature: one of mean, hot (99th percentile of hourly temperature), cold (1st percentile).
+conditions:
+  delhi:        {site: delhi, temperature: mean}
+  ladakh:       {site: leh, temperature: hot}        # thinnest air: high and warm
+  rajasthan:    {site: jaisalmer, temperature: hot}
+
+# Wind levels, from each site's hourly wind speed at 50 m (the patrol height).
+# turbulence = gust strength as a fraction of the mean wind.
+winds:
+  calm:    {speed: 0, turbulence_fraction: 0}
+  typical: {percentile: 50, turbulence_fraction: 0.3}
+  strong:  {percentile: 95, turbulence_fraction: 0.3}
+  extreme: {percentile: 99.9, turbulence_fraction: 0.4}

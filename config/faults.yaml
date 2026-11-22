@@ -1,0 +1,172 @@
+# Sensor faults at five levels, from mild (1) to severe (5).
+#
+# Each level is a set of ArduPilot SITL parameters (Copter-4.7.3 names) switched on mid-flight.
+# A level may instead be a list of alternative sets; the first set the simulator accepts is used.
+# Special value form {north_m: X}: a GPS glitch distance in metres, converted to degrees of latitude.
+# labels: plain-language description of each level, used in the report.
+#
+# Faults are applied to every unit of that sensor (both IMUs, all compasses, both barometers),
+# i.e. a common-mode fault the autopilot cannot vote out by switching to a spare sensor.
+
+gps:
+  name: GPS
+  description: GPS position errors, jamming and total loss (GPS 1)
+  labels: {1: 5 m position jump, 2: 20 m position jump, 3: 60 m position jump,
+           4: "jamming (random position, speed and satellite count)", 5: receiver dead}
+  levels:
+    1: {SIM_GPS1_GLTCH_X: {north_m: 5}}
+    2: {SIM_GPS1_GLTCH_X: {north_m: 20}}
+    3: {SIM_GPS1_GLTCH_X: {north_m: 60}}
+    4: {SIM_GPS1_JAM: 1}
+    5: {SIM_GPS1_ENABLE: 0}
+
+accelerometer:
+  name: Accelerometer
+  description: Accelerometer bias on the forward (X) axis, m/s^2, both IMUs
+  labels: {1: 0.1 m/s² bias, 2: 0.3 m/s² bias, 3: 0.6 m/s² bias, 4: 1.2 m/s² bias, 5: 2.5 m/s² bias}
+  levels:
+    1: {SIM_ACC1_BIAS_X: 0.1, SIM_ACC2_BIAS_X: 0.1}
+    2: {SIM_ACC1_BIAS_X: 0.3, SIM_ACC2_BIAS_X: 0.3}
+    3: {SIM_ACC1_BIAS_X: 0.6, SIM_ACC2_BIAS_X: 0.6}
+    4: {SIM_ACC1_BIAS_X: 1.2, SIM_ACC2_BIAS_X: 1.2}
+    5: {SIM_ACC1_BIAS_X: 2.5, SIM_ACC2_BIAS_X: 2.5}
+
+gyro:
+  name: Gyro
+  description: Gyro bias on the roll (X) axis, rad/s, both IMUs
+  labels: {1: 0.005 rad/s bias (0.3°/s), 2: 0.01 rad/s bias (0.6°/s), 3: 0.03 rad/s bias (1.7°/s),
+           4: 0.08 rad/s bias (4.6°/s), 5: 0.2 rad/s bias (11°/s)}
+  levels:
+    1: {SIM_GYR1_BIAS_X: 0.005, SIM_GYR2_BIAS_X: 0.005}
+    2: {SIM_GYR1_BIAS_X: 0.01, SIM_GYR2_BIAS_X: 0.01}
+    3: {SIM_GYR1_BIAS_X: 0.03, SIM_GYR2_BIAS_X: 0.03}
+    4: {SIM_GYR1_BIAS_X: 0.08, SIM_GYR2_BIAS_X: 0.08}
+    5: {SIM_GYR1_BIAS_X: 0.2, SIM_GYR2_BIAS_X: 0.2}
+
+compass:
+  name: Compass
+  description: Compass offset on the X axis, milligauss, all three compasses
+  labels: {1: 50 mGauss offset, 2: 150 mGauss offset, 3: 300 mGauss offset,
+           4: 600 mGauss offset, 5: 1000 mGauss offset}
+  levels:
+    1: {SIM_MAG1_OFS_X: 50, SIM_MAG2_OFS_X: 50, SIM_MAG3_OFS_X: 50}
+    2: {SIM_MAG1_OFS_X: 150, SIM_MAG2_OFS_X: 150, SIM_MAG3_OFS_X: 150}
+    3: {SIM_MAG1_OFS_X: 300, SIM_MAG2_OFS_X: 300, SIM_MAG3_OFS_X: 300}
+    4: {SIM_MAG1_OFS_X: 600, SIM_MAG2_OFS_X: 600, SIM_MAG3_OFS_X: 600}
+    5: {SIM_MAG1_OFS_X: 1000, SIM_MAG2_OFS_X: 1000, SIM_MAG3_OFS_X: 1000}
+
+barometer:
+  name: Barometer (height sensor)
+  description: Barometer (height sensor) drift, metres per second, both barometers
+  labels: {1: drifts 0.05 m/s, 2: drifts 0.1 m/s, 3: drifts 0.25 m/s, 4: drifts 0.5 m/s, 5: drifts 1.0 m/s}
+  levels:
+    1: {SIM_BARO_DRIFT: 0.05, SIM_BAR2_DRIFT: 0.05}
+    2: {SIM_BARO_DRIFT: 0.1, SIM_BAR2_DRIFT: 0.1}
+    3: {SIM_BARO_DRIFT: 0.25, SIM_BAR2_DRIFT: 0.25}
+    4: {SIM_BARO_DRIFT: 0.5, SIM_BAR2_DRIFT: 0.5}
+    5: {SIM_BARO_DRIFT: 1.0, SIM_BAR2_DRIFT: 1.0}
+
+# ---- Abrupt faults --------------------------------------------------------------------------
+# Sudden steps, noise and scale-factor errors, the fault shapes used in real-flight testing.
+# Ranges follow the RflyMAD real-flight dataset (validation/RFLYMAD_VALIDATION.md): real GPS
+# jumps 47-67 m median (up to 1.1 km), barometer jumps 83-324 m and noise about 81 m sd,
+# compass noise about 450 mGauss sd (up to 1,000), compass scale 0.8-1.5, accel scale 0.85-1.2,
+# gyro scale 0.9-1.15. Simulator semantics (Copter-4.7.3):
+#   SIM_BARO_GLITCH: altitude step (m). SIM_BARO_RND: uniform +/- noise (m), sd = value / sqrt(3).
+#   SIM_MAG_RND: uniform +/- noise per axis (mGauss). SIM_MAGn_SCALING: multiplies the field.
+#   SIM_ACCn_SCAL: reading is DIVIDED by it, so a 1.2x error is 1/1.2 = 0.8333.
+#   SIM_GYRn_SCALE: percent (5 = readings 5% too large).
+# Horizontal GPS noise has no parameter in this simulator version (SIM_GPS1_NOISE is only a slow
+# altitude sine), so GPS gets large abrupt jumps instead.
+
+gps_jump:
+  name: GPS large jump
+  group: abrupt
+  description: Sudden GPS position jump north, beyond the gradual levels (GPS 1)
+  labels: {1: 100 m jump, 2: 200 m jump, 3: 400 m jump, 4: 700 m jump, 5: 1100 m jump}
+  levels:
+    1: {SIM_GPS1_GLTCH_X: {north_m: 100}}
+    2: {SIM_GPS1_GLTCH_X: {north_m: 200}}
+    3: {SIM_GPS1_GLTCH_X: {north_m: 400}}
+    4: {SIM_GPS1_GLTCH_X: {north_m: 700}}
+    5: {SIM_GPS1_GLTCH_X: {north_m: 1100}}
+
+baro_step:
+  name: Barometer step
+  group: abrupt
+  description: Sudden barometer altitude step upwards (both barometers), metres
+  labels: {1: 5 m step, 2: 20 m step, 3: 50 m step, 4: 100 m step, 5: 300 m step}
+  levels:
+    1: {SIM_BARO_GLITCH: 5, SIM_BAR2_GLITCH: 5}
+    2: {SIM_BARO_GLITCH: 20, SIM_BAR2_GLITCH: 20}
+    3: {SIM_BARO_GLITCH: 50, SIM_BAR2_GLITCH: 50}
+    4: {SIM_BARO_GLITCH: 100, SIM_BAR2_GLITCH: 100}
+    5: {SIM_BARO_GLITCH: 300, SIM_BAR2_GLITCH: 300}
+
+baro_noise:
+  name: Barometer noise
+  group: abrupt
+  description: Barometer altitude noise (both barometers), uniform +/- amplitude in metres
+  labels: {1: noise ±2 m (sd 1.2 m), 2: noise ±5 m (sd 2.9 m), 3: noise ±20 m (sd 12 m),
+           4: noise ±60 m (sd 35 m), 5: noise ±150 m (sd 87 m)}
+  levels:
+    1: {SIM_BARO_RND: 2, SIM_BAR2_RND: 2}
+    2: {SIM_BARO_RND: 5, SIM_BAR2_RND: 5}
+    3: {SIM_BARO_RND: 20, SIM_BAR2_RND: 20}
+    4: {SIM_BARO_RND: 60, SIM_BAR2_RND: 60}
+    5: {SIM_BARO_RND: 150, SIM_BAR2_RND: 150}
+
+compass_noise:
+  name: Compass noise
+  group: abrupt
+  description: Compass noise on every axis of all compasses, uniform +/- amplitude in milligauss
+  labels: {1: noise ±100 mGauss (sd 58), 2: noise ±300 mGauss (sd 173), 3: noise ±600 mGauss (sd 346),
+           4: noise ±1000 mGauss (sd 577), 5: noise ±1700 mGauss (sd 981)}
+  levels:
+    1: {SIM_MAG_RND: 100}
+    2: {SIM_MAG_RND: 300}
+    3: {SIM_MAG_RND: 600}
+    4: {SIM_MAG_RND: 1000}
+    5: {SIM_MAG_RND: 1700}
+
+compass_scale:
+  name: Compass scale error
+  group: abrupt
+  description: Compass scale-factor error on all three compasses (field multiplied)
+  labels: {1: field x1.05, 2: field x1.1, 3: field x1.2, 4: field x1.35, 5: field x1.5}
+  levels:
+    1: {SIM_MAG1_SCALING: 1.05, SIM_MAG2_SCALING: 1.05, SIM_MAG3_SCALING: 1.05}
+    2: {SIM_MAG1_SCALING: 1.1, SIM_MAG2_SCALING: 1.1, SIM_MAG3_SCALING: 1.1}
+    3: {SIM_MAG1_SCALING: 1.2, SIM_MAG2_SCALING: 1.2, SIM_MAG3_SCALING: 1.2}
+    4: {SIM_MAG1_SCALING: 1.35, SIM_MAG2_SCALING: 1.35, SIM_MAG3_SCALING: 1.35}
+    5: {SIM_MAG1_SCALING: 1.5, SIM_MAG2_SCALING: 1.5, SIM_MAG3_SCALING: 1.5}
+
+accel_scale:
+  name: Accelerometer scale error
+  group: abrupt
+  description: Accelerometer scale-factor error on the vertical (Z) axis, both IMUs
+  labels: {1: vertical x1.02, 2: vertical x1.05, 3: vertical x1.1, 4: vertical x1.15, 5: vertical x1.2}
+  levels:
+    1: {SIM_ACC1_SCAL_Z: 0.98039, SIM_ACC2_SCAL_Z: 0.98039}
+    2: {SIM_ACC1_SCAL_Z: 0.95238, SIM_ACC2_SCAL_Z: 0.95238}
+    3: {SIM_ACC1_SCAL_Z: 0.90909, SIM_ACC2_SCAL_Z: 0.90909}
+    4: {SIM_ACC1_SCAL_Z: 0.86957, SIM_ACC2_SCAL_Z: 0.86957}
+    5: {SIM_ACC1_SCAL_Z: 0.83333, SIM_ACC2_SCAL_Z: 0.83333}
+
+gyro_scale:
+  name: Gyro scale error
+  group: abrupt
+  description: Gyro scale-factor error on all axes, both IMUs (percent too large)
+  labels: {1: rates +2%, 2: rates +5%, 3: rates +10%, 4: rates +15%, 5: rates +25%}
+  levels:
+    1: {SIM_GYR1_SCALE_X: 2, SIM_GYR1_SCALE_Y: 2, SIM_GYR1_SCALE_Z: 2, SIM_GYR2_SCALE_X: 2, SIM_GYR2_SCALE_Y: 2, SIM_GYR2_SCALE_Z: 2}
+    2: {SIM_GYR1_SCALE_X: 5, SIM_GYR1_SCALE_Y: 5, SIM_GYR1_SCALE_Z: 5, SIM_GYR2_SCALE_X: 5, SIM_GYR2_SCALE_Y: 5, SIM_GYR2_SCALE_Z: 5}
+    3: {SIM_GYR1_SCALE_X: 10, SIM_GYR1_SCALE_Y: 10, SIM_GYR1_SCALE_Z: 10, SIM_GYR2_SCALE_X: 10, SIM_GYR2_SCALE_Y: 10, SIM_GYR2_SCALE_Z: 10}
+    4: {SIM_GYR1_SCALE_X: 15, SIM_GYR1_SCALE_Y: 15, SIM_GYR1_SCALE_Z: 15, SIM_GYR2_SCALE_X: 15, SIM_GYR2_SCALE_Y: 15, SIM_GYR2_SCALE_Z: 15}
+    5: {SIM_GYR1_SCALE_X: 25, SIM_GYR1_SCALE_Y: 25, SIM_GYR1_SCALE_Z: 25, SIM_GYR2_SCALE_X: 25, SIM_GYR2_SCALE_Y: 25, SIM_GYR2_SCALE_Z: 25}
+
+# Repeats. The simulator's random generator has a fixed seed, so repeats of the same test
+# vary the wind direction instead. Wind speed and turbulence come from the wind level in
+# config/conditions.yaml.
+repeats:
+  wind_directions_deg: [0, 120, 240]
