@@ -17,14 +17,17 @@ import time
 
 from dtt import analyze, conditions, faults, mission
 from dtt.flight import FlightError, Vehicle
-from dtt.sitl import Sitl
+from dtt.sitl import Sitl, provenance
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STUCK_ON_GROUND_S = 15.0
 
 
 def fly(fault="none", level=0, repeat=0, condition="delhi", wind_level="typical", instance=0,
-        speedup=120, max_wall_s=300, out=os.path.join(HERE, "runs"), keep_workdir=False):
+        speedup=120, max_wall_s=300, out=os.path.join(HERE, "runs"), keep_workdir=False,
+        model="quad", params=None):
+    """params: parameter file of the drone under test, loaded as SITL defaults. The test's own
+    settings (mission.BASE_PARAMS and the wind) are still set on top of it."""
     home = conditions.home(condition)
     level = 0 if fault == "none" else level
     run_id = "%s_%s-%s_%s-L%d_r%d" % (datetime.datetime.now().strftime("%Y%m%d-%H%M%S"),
@@ -37,10 +40,12 @@ def fly(fault="none", level=0, repeat=0, condition="delhi", wind_level="typical"
     wind = faults.wind_for_repeat(repeat, wind_speed, wind_turb)
     meta = dict(run_id=run_id, site=condition, condition=conditions.describe(condition),
                 wind_level=wind_level, fault=fault, level=level, repeat=repeat,
-                description=faults.describe(fault, level), wind=wind, speedup=speedup, home=home)
+                description=faults.describe(fault, level), wind=wind, speedup=speedup, home=home,
+                vehicle=provenance(model, params))
     fault_params = {}
     completed = False
-    sitl = Sitl(workdir, home, instance=instance, speedup=speedup)
+    sitl = Sitl(workdir, home, instance=instance, speedup=speedup, model=model,
+                extra_defaults=[os.path.abspath(params)] if params else None)
     sitl.start()
     try:
         v = Vehicle(sitl.port)
@@ -129,9 +134,13 @@ def main():
     p.add_argument("--max-wall-s", type=float, default=300)
     p.add_argument("--out", default=os.path.join(HERE, "runs"))
     p.add_argument("--keep-workdir", action="store_true")
+    p.add_argument("--model", default="quad", help="SITL frame model of the drone under test")
+    p.add_argument("--params", default=None, help="parameter file of the drone under test")
     args = p.parse_args()
+    if args.params and not os.path.isfile(args.params):
+        p.error("--params file not found: %s" % args.params)
     outdir, result = fly(args.fault, args.level, args.repeat, args.condition, args.wind, args.instance,
-                         args.speedup, args.max_wall_s, args.out, args.keep_workdir)
+                         args.speedup, args.max_wall_s, args.out, args.keep_workdir, args.model, args.params)
     print(json.dumps(result, indent=2))
     print("saved:", outdir)
     return 0

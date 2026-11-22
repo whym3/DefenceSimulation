@@ -29,8 +29,20 @@ from . import analyze, conditions, faults  # noqa: E402
 OK = {"PASS", "SAFE_FAIL"}
 GREEN, LIGHT_GREEN, AMBER, RED, GREY = "#2e7d32", "#9ccc65", "#ffb300", "#d32f2f", "#bdbdbd"
 REACTION_WINDOW_S = 60.0
-FIRMWARE = "ArduPilot Copter-4.7.3, software-in-the-loop simulator (SITL)"
-DRONE = "Generic quadcopter (ArduPilot SITL built-in 'quad' model)"
+
+
+def vehicle_text(env):
+    """(drone, flight software) lines from the batch's recorded vehicle; older batches have none."""
+    v = env.get("vehicle") or {}
+    drone = "SITL '%s' frame model, " % v.get("model", "quad")
+    if v.get("params_file"):
+        drone += "parameter file %s (sha256 %s)" % (v["params_file"], v["params_sha256"][:12])
+    else:
+        drone += "ArduPilot default parameters (a generic quadcopter, not a specific product)"
+    firmware = "ArduPilot %s, software-in-the-loop simulator (SITL)" % (v.get("ardupilot") or "Copter-4.7.3")
+    if v.get("tool_commit"):
+        firmware += "; test tool %s" % v["tool_commit"]
+    return drone, firmware
 
 
 # ---- data ------------------------------------------------------------------------------------
@@ -59,11 +71,11 @@ def cause(reason):
         (r"hit the ground at", "lost control and crashed"),
         (r"crash detected", "crashed"),
         (r"geofence breached", "left the geofence"),
-        (r"failsafe too slow", "safety mode too late (over 5 s)"),
+        (r"failsafe too slow", "safety mode too late (over 5 s after the error passed 10 m)"),
         (r"(position error|drift) [\d.]+ m.*no (safety mode|failsafe)", "followed a false position, no safety mode"),
+        (r"failsafe engaged but", "safety mode on but did not land"),
         (r"did not land", "did not land"),
         (r"never switched on", "fault not reached"),
-        (r"failsafe engaged but", "safety mode on but did not land"),
         (r"mission not completed", "mission not completed"),
     ]
     for pat, text in rules:
@@ -95,7 +107,7 @@ def verdict_grid_png(rows, env, sensor, path):
             vs = [r["verdict"] for r in rows if r["condition"] == c and r["wind"] == w
                   and r["fault"] == sensor and r["level"] == lv]
             n_ok = sum(v in OK for v in vs)
-            if not vs or all(v == "NOT_TESTED" for v in vs):
+            if not vs or all(v in ("NOT_TESTED", "ERROR") for v in vs):
                 crow.append(0); trow.append("n/t")
             elif n_ok == len(vs):
                 crow.append(4 if all(v == "PASS" for v in vs) else 3); trow.append("%d/%d" % (n_ok, len(vs)))
@@ -154,7 +166,7 @@ def sensor_summary(rows, env, sensor):
             c, w = k.split("/")
             for r in rows:
                 if (r["condition"], r["wind"], r["fault"], r["level"]) == (c, w, sensor, first_bad) \
-                        and r["verdict"] not in OK and r["verdict"] != "NOT_TESTED":
+                        and r["verdict"] == "UNSAFE":
                     causes[cause(r["reason"])] += 1
     # Isolated failures: a milder level fails somewhere but a harsher level is safe everywhere.
     # Such a limit rests on a few flights and should be investigated before it is relied on.
@@ -197,6 +209,7 @@ def level_outcomes(rows, env, sensor):
 
 def build(batch, out_path=None):
     rows, env = load(batch)
+    DRONE, FIRMWARE = vehicle_text(env)
     out_path = out_path or os.path.join(batch, "report.pdf")
     fig_dir = os.path.join(batch, "report_figures")
     os.makedirs(fig_dir, exist_ok=True)
@@ -241,7 +254,7 @@ def build(batch, out_path=None):
               Paragraph("Each sensor was broken on purpose, one at a time, at five levels from mild to severe, "
                         "in %d combinations of place, temperature and wind. <b>Safe up to</b> is the most severe "
                         "level at which the drone either finished its mission correctly or switched to a safety "
-                        "mode within 5 seconds and landed &mdash; in <i>every</i> repeat and <i>every</i> flyable "
+                        "mode in time and landed &mdash; in <i>every</i> repeat and <i>every</i> flyable "
                         "condition (worst case). The best case over conditions is shown in brackets." % len(env["groups"]), B),
               Spacer(1, 2 * mm)]
     data = [["Sensor", "Safe up to (worst case)", "Fails at", "What goes wrong first"]]
@@ -255,6 +268,8 @@ def build(batch, out_path=None):
         else:
             safe_txt = "L%d: %s" % (sm["worst"], faults.label(s, sm["worst"]))
             fail_txt = "L%d: %s" % (sm["first_bad"], faults.label(s, sm["first_bad"])) if sm["first_bad"] else "not reached (all levels safe)"
+        if sm["first_bad"] and not sm["n_bad"]:
+            fail_txt = "L%d not verified: its flights could not be judged" % sm["first_bad"]
         if sm["best"] is not None and sm["best"] != sm["worst"]:
             safe_txt += " (best: L%d)" % sm["best"]
         what = sm["cause"] or "-"
@@ -274,12 +289,15 @@ def build(batch, out_path=None):
     story += [Spacer(1, 3 * mm), Paragraph("How each flight is judged", H2), table([
         ["Verdict", "Rule"],
         [P("<b>PASS</b>"), P("Mission completed, landed within 10 m of home, position error under 10 m.")],
-        [P("<b>SAFE FAIL</b>"), P("The autopilot switched to a safety mode within 5 s of the fault and landed, "
-                                  "without leaving the geofence or crashing.")],
+        [P("<b>SAFE FAIL</b>"), P("The autopilot switched to a safety mode no later than 5 s after its position "
+                                  "error passed 10 m (or before it got that large) and landed, without leaving "
+                                  "the geofence or crashing.")],
         [P("<b>UNSAFE</b>"), P("Left the geofence, crashed (including hitting the ground while believing it was "
-                               "over 5 m up without then landing by itself), over 50 m position error with no "
-                               "safety mode, a safety mode later than 5 s, or anything else.")],
+                               "over 5 m up without then landing by itself), a safety mode more than 5 s after "
+                               "the position error passed 10 m, or anything else.")],
         [P("<b>NOT TESTED</b>"), P("The drone never reached the point where the fault is switched on.")],
+        [P("<b>ERROR</b>"), P("The flight log is incomplete, so the flight could not be judged. A level with such "
+                              "a flight is not counted as safe.")],
     ], [30 * mm, 145 * mm]),
         Spacer(1, 2 * mm),
         Paragraph("Position error is the larger of the horizontal and vertical difference between where the drone "
@@ -291,7 +309,8 @@ def build(batch, out_path=None):
     story += [Paragraph("Safe limit by condition and wind", H2),
               Paragraph("Highest fault level at which every repeat passed or failed safely. "
                         "L5 = all tested levels safe; L0 = unsafe even at the mildest level; "
-                        "n/a = the drone fails without any fault in that condition.", B), Spacer(1, 2 * mm)]
+                        "n/a = the drone fails without any fault in that condition; "
+                        "? = the next level could not be judged, so the limit may be higher.", B), Spacer(1, 2 * mm)]
     hdr = ParagraphStyle("hdr", parent=cell, fontSize=7, leading=8.5, textColor=colors.white)
     data = [["Condition / wind", "Baseline"] + [Paragraph(faults.name(s).split(" (")[0], hdr) for s in sensors]]
     extra = []
@@ -299,7 +318,7 @@ def build(batch, out_path=None):
         row = [P(group_label(g)), "/".join(v[:1] for v in g["baseline"])]
         for j, s in enumerate(sensors, 2):
             lim = g["sensors"][s]["safe_up_to_level"]
-            row.append("n/a" if lim is None else "L%d" % lim)
+            row.append("n/a" if lim is None else "L%d%s" % (lim, "?" if g["sensors"][s].get("not_verified_level") else ""))
             col = GREY if lim is None else GREEN if lim == max(faults.LEVELS) else RED if lim == 0 else AMBER
             extra.append(("BACKGROUND", (j, i), (j, i), colors.HexColor(col)))
             if col in (GREEN, RED):
@@ -333,7 +352,11 @@ def build(batch, out_path=None):
         head = [Paragraph(faults.name(s), H2),
                 Paragraph("<b>Fault:</b> %s." % faults._CONFIG[s]["description"], B)]
         if sm["worst"] is not None:
-            if sm["first_bad"]:
+            if sm["first_bad"] and not sm["n_bad"]:
+                head.append(Paragraph("<b>Safe up to L%d</b> in every flyable condition. L%d (%s) is not verified: "
+                                      "its flights could not be judged." % (
+                                          sm["worst"], sm["first_bad"], faults.label(s, sm["first_bad"])), B))
+            elif sm["first_bad"]:
                 head.append(Paragraph("<b>Safe up to L%d</b> in every flyable condition; first failures at L%d (%s): "
                                       "mostly <i>%s</i>." % (sm["worst"], sm["first_bad"], faults.label(s, sm["first_bad"]),
                                                              sm["cause"] or "-"), B))
@@ -348,7 +371,7 @@ def build(batch, out_path=None):
         img = Image(png, width=175 * mm, height=175 * mm * (0.32 * len(env["groups"]) + 1.1) / 7.2)
         legend = Paragraph("Cell = repeats that ended PASS or SAFE FAIL out of repeats flown. Dark green: all PASS; "
                            "light green: all safe, some via safety mode; amber: mixed; red: none safe; "
-                           "grey: not tested (baseline cannot fly).", S)
+                           "grey: not tested, or no flight could be judged.", S)
         data = [["Level", "Fault", "Flights", "Pass", "Safe fail", "Unsafe", "Main failure", "Reaction", "Error"]]
         for o in level_outcomes(rows, env, s):
             data.append(["L%d" % o["level"], P(faults.label(s, o["level"])), o["n"], o["passed"], o["safe"],
@@ -372,8 +395,9 @@ def build(batch, out_path=None):
         "with the simulator's true position.", B),
         Paragraph("Limitations", H2)]
     limits = [
-        "Simulation only, with a generic quadcopter model. A specific drone's weight, motors, battery and "
-        "parameters change the results; supply its parameter file to test that drone.",
+        "Simulation only. A specific drone's weight, motors, battery and parameters change the results. "
+        "Its parameter file can be supplied (--params) and is named on page 1 when it was; the airframe "
+        "physics stay those of the simulator's frame model.",
         "Wind data are hourly averages (NASA POWER reanalysis), so real gusts are stronger than modelled.",
         "Temperature is represented only through air density. Cold-battery capacity loss and sensor temperature "
         "drift are not modelled.",

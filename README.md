@@ -15,9 +15,10 @@ bash setup/build_ardupilot.sh   # clones ArduPilot Copter-4.7.3 and builds the s
 
 ```bash
 source ~/venv-drone/bin/activate
-cd /mnt/c/Users/S1AND/Downloads/anything/drone-test-tool
-python demo.py          # 52 flights (Delhi + Ladakh, typical wind) + PDF report, about 1 minute
-python demo.py --full   # the full 780-flight matrix + PDF report, about 18 minutes
+cd <this repo>           # under WSL, a Windows folder is /mnt/c/...
+python demo.py          # 122 flights (Delhi + Ladakh, typical wind, all 12 fault families) + PDF report
+python demo.py --full   # the full 1,830-flight matrix + PDF report
+python tests/test_verdicts.py   # checks the scoring rules on made-up flights; no simulator needed
 ```
 
 The report is written to `batches/<name>/report.pdf`. It has a one-page summary of each sensor's
@@ -31,7 +32,8 @@ what goes wrong at each level, and the method and limitations.
 python run_one.py                                          # one baseline flight (Delhi, typical wind)
 python run_one.py --fault gps --level 5                    # one fault flight
 python run_one.py --condition ladakh --wind strong --fault barometer --level 2
-python run_batch.py                                        # everything: 3 conditions x 4 winds x 26 tests x repeats
+python run_batch.py                                        # everything: 3 conditions x 4 winds x 61 tests x repeats (1,830 flights)
+python run_batch.py --params my_drone.parm --model quad    # test a specific drone's ArduPilot parameter file
 python run_batch.py --conditions delhi --winds typical     # one condition and wind
 python run_batch.py --sensors compass --levels 4 5 --repeats 1 --parallel 4
 ```
@@ -44,7 +46,8 @@ and cached in `data/`, so tests run offline.
   (each sensor's safe limit) and `report.pdf` under `batches/<time>/`. Use `--no-report` to skip the
   PDF, and `python make_report.py batches/<name>` to rebuild it without flying.
 - **Speed:** by default flights run at 120× real time on 12 simulators (each simulator actually
-  reaches about 90×), about 4.5 s per flight; the full 780-flight matrix takes about 10.5 minutes.
+  reaches about 90×), about 4.5 s per flight; the 780-flight gradual matrix (`--group gradual`)
+  takes about 10.5 minutes.
   Checks: 40× against 10× gave identical verdicts for 76 of 78 flights, and 120× against 80× gave
   identical safe limits in all 60 sensor groups. The only flight-level differences were GPS
   jamming, which uses random data. `tools/compare_batches.py A B` repeats this check.
@@ -80,6 +83,15 @@ Horizontal GPS noise has no simulator parameter in Copter-4.7.3, so it is not in
 
 **Repeats.** The simulator's random generator has a fixed seed, so repeats differ by wind
 direction instead: 0°, 120° and 240°. Calm wind has no direction, so it gets one repeat.
+Flights are still not exactly repeatable: the simulator is not locked to the test script, so the
+moment the fault lands shifts slightly with computer load (2 of 78 verdicts differed between 10×
+and 40×). Three repeats are three scenarios, not a failure-rate estimate.
+
+**Drone under test.** By default the drone is ArduPilot's generic quadcopter with default settings.
+`--params <file>` loads a drone's own ArduPilot parameter file (EKF gates, failsafe settings, tuning)
+and `--model` picks the simulator frame model. The file's SHA-256, the ArduPilot version and this
+tool's commit are saved in `result.json` and `envelope.json` and printed on the report's first page.
+The test's own settings (geofence, wind) are applied on top of the file.
 
 ## Conditions
 
@@ -113,12 +125,18 @@ Not modelled yet: cold-battery capacity loss and IMU temperature effects.
 | Verdict | Rule |
 |---|---|
 | PASS | Mission completed, landed within 10 m of home, position error under 10 m |
-| SAFE_FAIL | The autopilot switched to a safety mode (failsafe mode change) within 5 s of the fault and landed, with no fence breach and no crash |
-| UNSAFE | Fence breached, a crash, more than 50 m position error with no safety mode, a safety mode later than 5 s, or anything else |
+| SAFE_FAIL | The autopilot switched to a safety mode (failsafe mode change) no later than 5 s after the position error passed 10 m, or before it got that large, and landed, with no fence breach and no crash |
+| UNSAFE | Fence breached, a crash, a safety mode more than 5 s after the position error passed 10 m, or anything else (including any other flight with over 10 m position error and no safety mode) |
 | NOT_TESTED | The drone never reached the point where the fault switches on (for example it could not fly upwind), so the flight says nothing about the sensor |
-| ERROR | The flight log ends with the drone still in the air, so the ending is unknown |
+| ERROR | The flight log ends with the drone still in the air and shows no fence breach or crash, so the ending is unknown. The batch runner flies such a flight once more |
 
-NOT_TESTED and ERROR flights are left out when safe limits are worked out.
+The safety mode is timed from when the fault became dangerous, not from when it was switched on: a
+slow drift is harmless for its first seconds, so no autopilot could react to it within 5 s of
+injection. `result.json` gives both times (`failsafe_reaction_s` from the fault,
+`reaction_after_hazard_s` from the 10 m point).
+
+A level with a NOT_TESTED or ERROR flight is not counted as safe. The safe limit stops below it and
+is marked `?` (`not_verified_level` in `envelope.json`): the level is neither proven safe nor unsafe.
 
 If the baseline (no fault) fails in a condition and wind, that group's sensor limits show as **n/a**.
 
@@ -138,5 +156,5 @@ If the baseline (no fault) fails in a condition and wind, that group's sensor li
 ## Mission
 
 Take-off to 50 m, a 375 m square patrol loop (1.5 km) around home, then return to launch. A
-600 m circular geofence with a 120 m ceiling is set. Faults switch on as the drone leaves the
-second corner, about 265 m from home.
+600 m circular geofence with a 120 m ceiling is set. Scoring checks only the 600 m circle, not the
+ceiling. Faults switch on as the drone leaves the second corner, about 265 m from home.

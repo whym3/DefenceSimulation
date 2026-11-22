@@ -1,5 +1,6 @@
 """Starts and stops one ArduCopter SITL (software-in-the-loop) simulator process."""
 import glob
+import hashlib
 import os
 import subprocess
 import time
@@ -7,6 +8,21 @@ import time
 ARDUPILOT_DIR = os.path.expanduser(os.environ.get("ARDUPILOT_DIR", "~/ardupilot"))
 ARDUCOPTER_BIN = os.path.join(ARDUPILOT_DIR, "build/sitl/bin/arducopter")
 COPTER_DEFAULTS = os.path.join(ARDUPILOT_DIR, "Tools/autotest/default_params/copter.parm")
+
+
+def provenance(model="quad", params=None):
+    """What was tested: firmware, tool version, frame model and the drone's parameter file."""
+    def git(directory, *args):
+        try:
+            return subprocess.run(("git", "-C", directory) + args, capture_output=True, text=True).stdout.strip() or None
+        except OSError:
+            return None
+    p = dict(model=model, ardupilot=git(ARDUPILOT_DIR, "describe", "--tags", "--match", "Copter-*", "--always", "--dirty"),
+             tool_commit=git(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "rev-parse", "--short", "HEAD"))
+    if params:
+        with open(params, "rb") as f:
+            p.update(params_file=os.path.basename(params), params_sha256=hashlib.sha256(f.read()).hexdigest())
+    return p
 
 
 class Sitl:

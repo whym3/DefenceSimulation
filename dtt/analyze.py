@@ -5,8 +5,6 @@ believed it was (AHRS/EKF estimate, POS message).
 """
 import math
 
-from pymavlink import mavutil
-
 # ArduPilot ModeReason values (libraries/AP_Vehicle/ModeReason.h, Copter-4.7.3) that mean the
 # autopilot changed mode by itself because of a problem: radio, battery, GCS, EKF failsafes,
 # GPS glitch, fence breach, terrain, terminate, crash, general failsafe, dead-reckoning.
@@ -42,6 +40,7 @@ def dist_m(lat1, lon1, lat2, lon2):
 
 
 def read_log(path):
+    from pymavlink import mavutil  # imported here so the scoring rules can be tested without it
     log = mavutil.mavlink_connection(path)
     sim, pos, modes, errs, parms, msgs = [], [], [], [], [], []
     while True:
@@ -97,6 +96,7 @@ def score(log_path, fault_params, mission_completed, fence_radius_m, landed=True
     vert_offset = None
     est_height = []  # (ts, estimated height above home)
     max_from_home = 0.0
+    hazard_t = None  # first time after the fault that the position error passes PASS_DRIFT_M
     ground = home[3]
     pi = 0
     pos = d["pos"]
@@ -120,6 +120,8 @@ def score(log_path, fault_params, mission_completed, fence_radius_m, landed=True
             max_vert_error = max(max_vert_error, verr)
             if fault_t and ts >= fault_t:
                 max_vert_error_after_fault = max(max_vert_error_after_fault, verr)
+                if verr > PASS_DRIFT_M and hazard_t is None:
+                    hazard_t = ts
             max_est_error = max(max_est_error, drift)
         elif fault_t and ts > fault_t:
             if est_lost_at is None:
@@ -128,6 +130,8 @@ def score(log_path, fault_params, mission_completed, fence_radius_m, landed=True
         max_drift = max(max_drift, drift)
         if fault_t and ts >= fault_t:
             max_drift_after_fault = max(max_drift_after_fault, drift)
+            if drift > PASS_DRIFT_M and hazard_t is None:
+                hazard_t = ts
 
     # Failsafe reaction = the autopilot switching to a safety mode by itself (a MODE change with a
     # failsafe reason). ERR entries such as "GPS glitch" are only warnings: they are reported as
@@ -179,16 +183,23 @@ def score(log_path, fault_params, mission_completed, fence_radius_m, landed=True
     landed_dist = dist_m(home[1], home[2], d["sim"][-1][1], d["sim"][-1][2])
 
     reaction_s = (reaction_t - fault_t) if (reaction_t is not None and fault_t is not None) else None
+    # The reaction is timed from when the fault became dangerous (position error over PASS_DRIFT_M),
+    # not from when it was switched on: a slow drift is harmless at first, so no autopilot can react
+    # to it within seconds of injection. A reaction before the error gets that large is in time.
+    late_s = (reaction_t - hazard_t) if (reaction_t is not None and hazard_t is not None) else None
+    in_time = reaction_t is not None and (late_s is None or late_s <= SAFE_FAIL_REACTION_S)
     # The 10 m / 50 m limits apply to whichever is worse: horizontal or vertical position error.
     horiz = max_drift_after_fault if fault_t else max_drift
     vert = max_vert_error_after_fault if fault_t else max_vert_error
     drift_for_rules = max(horiz, vert)
 
+    # The log stops while the drone is still in the air (log not fully written, or the run hit its
+    # time limit): the ending is unknown. A fence breach or crash already in the log still counts.
     end_height = d["sim"][-1][3] - ground
-    if end_height > LOG_END_AIRBORNE_M:
-        # The log stops while the drone is still in the air (log not fully written, or the run hit
-        # its time limit): the ending is unknown, so the flight cannot be judged.
-        verdict, why = "ERROR", "flight log incomplete: it ends with the drone %.0f m up" % end_height
+    incomplete = end_height > LOG_END_AIRBORNE_M
+    incomplete_why = "flight log incomplete: it ends with the drone %.0f m up" % end_height
+    if fault_expected and fault_t is None and incomplete:
+        verdict, why = "ERROR", incomplete_why
     elif fault_expected and fault_t is None:
         # The drone never reached the fault point (e.g. could not fly upwind), so the fault was
         # never switched on: this flight says nothing about the sensor.
@@ -198,15 +209,17 @@ def score(log_path, fault_params, mission_completed, fence_radius_m, landed=True
         verdict, why = "UNSAFE", "geofence breached"
     elif crashed:
         verdict, why = "UNSAFE", crash_why
+    elif incomplete:
+        verdict, why = "ERROR", incomplete_why
     elif mission_completed and drift_for_rules < PASS_DRIFT_M and landed_dist < PASS_DRIFT_M:
         verdict, why = "PASS", "mission completed, drift %.1f m" % drift_for_rules
-    elif reaction_s is not None and reaction_s <= SAFE_FAIL_REACTION_S and landed:
+    elif in_time and landed:
         verdict, why = "SAFE_FAIL", "failsafe after %.1f s (%s), landed safely" % (reaction_s, reaction_desc)
     elif drift_for_rules > UNSAFE_DRIFT_M and reaction_s is None:
         verdict, why = "UNSAFE", "drift %.1f m with no failsafe" % drift_for_rules
-    elif reaction_s is not None and reaction_s > SAFE_FAIL_REACTION_S:
-        verdict, why = "UNSAFE", "failsafe too slow (%.1f s, limit %.0f s)%s" % (
-            reaction_s, SAFE_FAIL_REACTION_S, ", then landed without crash" if landed else "")
+    elif reaction_s is not None and not in_time:
+        verdict, why = "UNSAFE", "failsafe too slow (%.1f s after the position error passed %.0f m, limit %.0f s)%s" % (
+            late_s, PASS_DRIFT_M, SAFE_FAIL_REACTION_S, ", then landed without crash" if landed else "")
     elif reaction_s is not None:
         verdict, why = "UNSAFE", "failsafe engaged but the drone did not land"
     elif mission_completed:
@@ -222,6 +235,8 @@ def score(log_path, fault_params, mission_completed, fence_radius_m, landed=True
         reason=why,
         fault_time_s=fault_t,
         failsafe_reaction_s=reaction_s,
+        hazard_after_fault_s=None if (hazard_t is None or fault_t is None) else round(hazard_t - fault_t, 1),
+        reaction_after_hazard_s=None if late_s is None else round(late_s, 1),
         failsafe=reaction_desc,
         first_warning_s=None if (warning_t is None or fault_t is None) else round(warning_t - fault_t, 1),
         first_warning=warning_desc,

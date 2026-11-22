@@ -38,9 +38,10 @@ for res_path in sorted(glob.glob(os.path.join(batch, "*", "result.json"))):
 sensors = [s for s in faults.SENSORS if any(r["fault"] == s for r in rows)]
 levels = sorted({r["level"] for r in rows if r["fault"] != "none"})
 # Keep the original batch's flying time; re-scoring takes no flying time.
-wall_s = 0.0
+wall_s, vehicle = 0.0, None
 env_path = os.path.join(batch, "envelope.json")
 if os.path.exists(env_path):
     with open(env_path) as f:
-        wall_s = 60.0 * (json.load(f).get("wall_minutes") or 0)
-run_batch.write_outputs(rows, batch, sensors, levels, wall_s)
+        old_env = json.load(f)
+    wall_s, vehicle = 60.0 * (old_env.get("wall_minutes") or 0), old_env.get("vehicle")
+run_batch.write_outputs(rows, batch, sensors, levels, wall_s, vehicle)

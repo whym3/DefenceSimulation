@@ -2,6 +2,11 @@
 
 *22 November 2026. The data and the scripts that produced these numbers are listed at the end.*
 
+*Corrected later the same day after re-deriving the figures from the two CSVs: fault durations, what
+the mode changes in the real flights mean, which "jump" figures are real fault sizes, and how often
+PX4 rejected the readings. The tool's own results in section 3 were scored with the earlier rule
+(safety mode within 5 s of the fault being switched on); re-score the batch before quoting them.*
+
 ## What was compared
 
 **RflyMAD** is a public multicopter fault dataset from Beihang University's Reliable Flight Control
@@ -17,70 +22,79 @@ injected in flight:
 | Compass | 36 | noise (16), scale factor (20) |
 | Barometer | 45 | noise (18), scale factor (27) |
 
-The flights cover hover, waypoint, velocity, circling and acceleration manoeuvres. Faults last about
-20 s, and a safety pilot supervises every flight.
+The flights cover hover, waypoint, velocity, circling and acceleration manoeuvres. Faults last
+4 to 116 s (median 41 s) and are then switched off. Every flight was in scripted (OFFBOARD) mode when
+the fault was injected, and a safety pilot supervises every flight.
 
 **What a comparison can and cannot show.** RflyMAD was flown with **PX4**; our tool uses **ArduPilot**.
 RflyMAD injects **noise** and **scale-factor** faults; ours injects **bias, drift, jumps, jamming and
-total loss**. The real flights have no ground-truth position, and the safety pilot changes mode by
-hand. So verdicts can't be matched one-to-one. What the data *can* show:
-1. **How big real sensor faults are**, so we can judge whether our five levels are realistic.
-2. **How a real autopilot treats a bad sensor**: whether its estimator rejects the readings, and
-   whether any automatic safety mode switches on.
+total loss**. The real flights have no ground-truth position, and the fault is switched off before
+the flight ends. So verdicts can't be matched one-to-one. What the data *can* show:
+1. **How big real noise faults are**, so we can judge whether our five levels are realistic.
+2. **Whether a real autopilot's estimator rejects the bad readings.** It cannot show whether an
+   automatic safety mode would have switched on, because the faults end first (section 2).
 
 ## 1. How big real faults are
 
 Measured from each flight's PX4 log: the faulted sensor's fast noise in the 10 s before and during
 the fault (slow flight motion removed), and its largest jump from the pre-fault average.
-Values are medians over flights; the maximum is in brackets.
+Values are medians over flights; the maximum is in brackets. The "largest jump" of a **scale** fault
+on GPS or compass is mostly the drone's own movement, not the fault: for GPS it is 1.5 m in hover
+flights but about 140 m in velocity and acceleration flights, and for compass 63 mGauss in hover but
+664 in circling flights. Those two cells are marked † and are not used as fault sizes. Noise-fault
+jumps and barometer jumps are similar in hover and in moving flights, so they are fault sizes.
 
 | Sensor | Fault type | Fast noise before → during | Largest jump during fault | Our levels (L1 → L5) |
 |---|---|---|---|---|
 | **GPS** | noise | 0.3 m → **17 m** (340 m) | **67 m** (1,133 m) | jumps of 5, 20, 60 m → jamming → dead |
-| GPS | "scale" | 0.06 m → 0.2 m | **47 m** (160 m) | |
+| GPS | "scale" | 0.06 m → 0.2 m | 47 m (160 m) † | |
 | **Barometer** | noise | 0.27 m → **81 m** (206 m) | **324 m** (695 m) | drift 0.05 → 1.0 m/s (≈ 8 → 170 m by the end of a flight) |
 | Barometer | scale | 0.23 m → 0.32 m | **83 m** (409 m) | |
 | **Compass** | noise | 12 → **450 mGauss** (1,000) | **1,300 mGauss** (3,229) | offsets of 50 → 1,000 mGauss |
-| Compass | scale | 14 → 13 mGauss | **361 mGauss** (832) | |
+| Compass | scale | 14 → 13 mGauss | 361 mGauss (832) † | |
 | **Accelerometer** | noise / scale | 5.7 → 5.8 m/s² | (lost in vibration) | bias 0.1 → 2.5 m/s² |
 | **Gyro** | noise / scale | 0.67 → 0.80 rad/s | (lost in vibration) | bias 0.005 → 0.2 rad/s |
 
 **What this says about our levels:**
-- **GPS:** real faults are at or beyond our **L3 (60 m)**. Our L1 (5 m) and L2 (20 m) are *milder*
-  than any real fault in the set, which is good: the tool tests below the real-world range too.
+- **GPS:** real **noise** faults (median jump 41 to 74 m in every manoeuvre, hover included) are
+  around our **L3 (60 m)**. Our L1 (5 m) and L2 (20 m) are *milder* than the noise faults in the set,
+  which is good: the tool tests below the real-world range too.
   Real faults are mostly **noise**, while ours are **steady offsets**. Both are realistic: steady
   offsets are what spoofing produces.
 - **Barometer:** real faults are **abrupt and large** (steps of tens to hundreds of metres). Ours is a
   **slow drift**, which ends up at similar totals by L3–L5 but builds up gradually. That makes it
   harder for an autopilot to notice, as the results confirm (see section 2).
-- **Compass:** real faults (360–1,300 mGauss) match our **L3–L5** (300–1,000 mGauss). Our range is
-  realistic and reaches the real median.
+- **Compass:** real **noise** faults (median jump 1,300 mGauss, 576 in waypoint flights) are at or
+  above our **L5** (1,000 mGauss). The size of the real scale faults could not be separated from the
+  drone turning.
 - **Accelerometer and gyro:** in real flights the injected noise and scale faults are **smaller than
   the drone's own vibration** (raw IMU noise about 5.7 m/s² and 0.67 rad/s), so they barely show in
   the data. Our biases (up to 2.5 m/s² and 0.2 rad/s) are steady offsets that vibration does not hide.
-  Their sizes are in a comparable range.
+  The real fault sizes could not be measured, so this data neither supports nor contradicts our levels.
 
 ## 2. How a real autopilot reacted
 
 | Sensor | Estimator rejected the readings?* | Automatic safety mode | What happened |
 |---|---|---|---|
-| GPS | **Yes**: test ratio 87–213 (rejected when over 1) | none (0 of 43) | the safety pilot switched to manual altitude/position modes |
-| Barometer | **Yes**: test ratio 22–187 | 2 of 45 (about 85 s later) | as above; 3 flights went to auto-land |
-| Compass | not visible in the logged test ratios | none | pilot-managed |
-| Accelerometer / gyro | no | none | pilot-managed |
+| GPS | in **29 of 43** flights (test ratio over 1; median 151) | none (0 of 43) | mode changed to manual altitude/position at the end of the fault window |
+| Barometer | in **41 of 45** flights (median 91) | 2 of 45 (83 s and 87 s after the fault) | as above; 3 flights went to auto-land |
+| Compass | in 3 of 36 flights | none | as above |
+| Accelerometer / gyro | no | none | as above |
 
 \* `estimator_innovation_test_ratios`: PX4 rejects a measurement when its ratio exceeds 1.
 
 **What this means for our results:**
-1. **PX4 rejected abrupt, noisy GPS and barometer faults.** In our tool, ArduPilot **did not reject a
+1. **PX4 rejected abrupt, noisy GPS and barometer faults in most flights.** In our tool, ArduPilot **did not reject a
    slow barometer drift**, and it **accepted a steady 20 m or 60 m GPS offset after about 20 s**. These
    are different fault shapes, not a contradiction. A gradual or steady error passes consistency
    checks that a sudden one fails. This supports keeping the drift and offset faults: they are the
    *hard* cases.
-2. **Real flights relied on the safety pilot, not automatic safety modes.** Only 2 of 197 flights
-   triggered PX4's own failsafe. That matches our finding that ArduPilot's automatic safety
-   reaction is often absent or slower than 5 s. A drone flying beyond visual range can't count on
-   a pilot taking over, which is exactly what this tool measures.
+2. **The real flights do not show how fast an automatic safety mode would be.** Only 2 of 197
+   flights triggered PX4's own failsafe, but the faults were switched off after a median of 41 s.
+   In 159 of the 192 flights with a mode change, the first change came within 2 s of the fault
+   window ending: that is the scripted test handing back control, not a reaction to the fault. So
+   this data neither confirms nor contradicts our finding that ArduPilot's automatic safety
+   reaction is often absent or slow.
 
 ## 3. Abrupt faults in our tool, compared with the real flights
 
@@ -100,8 +114,8 @@ Counts below cover the 24 flights per level in conditions the drone can fly in.
 | **Gyro scale** | +25% (all levels) | — | ×0.9–1.15 | **safe** |
 
 **Comparison with PX4 in the real flights:**
-- **GPS and barometer.** PX4 **rejected** abrupt GPS and barometer faults in the real flights (innovation
-  test ratios 87–213 and 22–187). ArduPilot with default settings, in our simulation, **did not reject**
+- **GPS and barometer.** PX4 **rejected** abrupt GPS and barometer faults in most real flights (29 of 43
+  and 41 of 45). ArduPilot with default settings, in our simulation, **did not reject**
   GPS jumps of 100–400 m or barometer steps of 20 m or more before they caused a failure. Its EKF
   failsafe needed about **10 s**, and only for the largest faults. This is the most important
   finding of the validation: for the generic ArduPilot quadcopter, **GPS and barometer integrity
@@ -112,10 +126,10 @@ Counts below cover the 24 flights per level in conditions the drone can fly in.
 
 **Caveats.** PX4 and ArduPilot are different autopilots, and our drone uses default ArduPilot settings
 on a generic frame. In the real flights a rejected measurement doesn't show whether the drone
-*would* have survived, because the safety pilot took over. The comparison shows which faults each
+*would* have survived, because the fault was switched off and control handed back. The comparison shows which faults each
 autopilot detects, not a like-for-like survival rate. A maker can tune ArduPilot's EKF innovation
 gates and failsafe timing (for example `EK3_POS_I_GATE`, `EK3_HGT_I_GATE`, `FS_EKF_THRESH`), and
-running the tool on *their* parameter file is how to check that.
+running the tool on *their* parameter file (`--params`) is how to check that.
 
 **Scoring note.** While reviewing this batch, the "flew into the ground" crash rule was refined: it now
 counts only when the drone touched the ground while believing it was more than 5 m up **and did not

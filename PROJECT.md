@@ -97,7 +97,7 @@ The four-week plan for the first product is essentially complete.
 - **PDF report** generated automatically after every batch: a summary page, a colour-coded safe-limit
   table, one page per sensor with a verdict grid, and the method and limitations.
 - Report honesty checks: limits that rest on only a few flights are flagged as isolated.
-- **One command:** `python demo.py` gives 52 flights plus the report in about 1 minute; `--full` runs everything.
+- **One command:** `python demo.py` gives the report from a small set (52 flights then; 122 now that the abrupt faults are included); `--full` runs everything.
 - Fixed flight logs being cut short at high speed (affected 1.4% of flights). Incomplete logs are
   now marked ERROR instead of being judged.
 - **Validated against 197 real flights** from the RflyMAD dataset (PX4 quadcopters with injected
@@ -140,9 +140,9 @@ complete, and safe limits identical to week 3 in all 60 sensor groups. The full 
 ```bash
 wsl -d Ubuntu-24.04
 source ~/venv-drone/bin/activate
-cd /mnt/c/Users/S1AND/Downloads/anything/drone-test-tool
+cd <this repo>
 python demo.py            # 1-minute demo + PDF report
-python demo.py --full     # full 780-flight matrix + PDF report (~18 min)
+python demo.py --full     # full 1,830-flight matrix + PDF report
 ```
 
 Details are in [README.md](README.md); developer notes are in [CLAUDE.md](CLAUDE.md).
