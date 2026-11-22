@@ -105,6 +105,9 @@ and `--model` picks the simulator frame model. The file's SHA-256, the ArduPilot
 tool's commit are saved in `result.json` and `envelope.json` and printed on the report's first page.
 The test's own settings (geofence, wind) are applied on top of the file.
 
+[config/tuning/strict.parm](config/tuning/strict.parm) is a ready example: stricter estimator checks
+than the defaults, used for the tuning study in [PROJECT.md](PROJECT.md).
+
 A frame model can also carry the airframe's physics (mass, rotors, battery, drag). ArduPilot ships
 one for the Callisto, a 32.5 kg heavy-lift octocopter, with its parameter file:
 

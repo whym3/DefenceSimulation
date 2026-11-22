@@ -1,0 +1,10 @@
+# Tuning study: stricter estimator checks than ArduPilot's defaults (Copter-4.7.3 defaults in brackets).
+# Use with:  python run_batch.py --params config/tuning/strict.parm ...
+# Accept a GPS position only within 5 m of the prediction before calling it a glitch (25).
+EK3_GLITCH_RAD 5
+# Reject GPS position, GPS velocity and height readings beyond 3 standard deviations (500 = 5).
+EK3_POS_I_GATE 300
+EK3_VEL_I_GATE 300
+EK3_HGT_I_GATE 300
+# Trip the EKF failsafe at a lower variance (0.8); 0.6 is the documented "strict" value.
+FS_EKF_THRESH 0.6

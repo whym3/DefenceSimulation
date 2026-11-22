@@ -156,8 +156,16 @@ The four-week plan for the first product is essentially complete.
   together. Flown for both airframes with 7 extra repeats: 526 flights for the generic quad (first
   batch on the MacBook) and 575 for the Callisto, every log complete. Reports:
   `batches/ew-generic-120x` and `batches/ew-callisto-120x`. Results below.
-- **Working rule from now on:** when the MacBook is reachable, batches are split with it; results are
-  copied back to the PC, verified, and then cleared from the Mac.
+- **Tuning study flown** (generic quad, 1,080 flights, every log complete): the same GPS, barometer,
+  spoofing and electronic-attack faults with stricter estimator settings
+  ([config/tuning/strict.parm](config/tuning/strict.parm)). Reports: `batches/strict-delhi-120x`,
+  `strict-ladakh-120x`, `strict-rajasthan-120x`. Results below.
+- **Autopilot survey:** no military autopilot can be downloaded. Indian makers split into closed
+  in-house autopilots (ideaForge, Zuppa) and bought-in or Indian-made flight controllers that run
+  ArduPilot or PX4; no public source gives the split. PX4 is the open autopilot the US government
+  standardised on for small drones, so it is the next one to support.
+- **Working rule from now on:** all batches run on the PC. The MacBook is set up but is no longer
+  used, because the PC became fast enough after the log-wait fix.
 
 ### Main findings (generic quadcopter, simulation, 22 November 2026 batches)
 
@@ -236,6 +244,35 @@ Counts are flights in conditions the drone can fly in.
   The report now states the landing distance. Decide whether landing far from where the drone
   believes it is should count as unsafe.
 
+### Tuning study: can stricter settings fix it? (22 November 2026)
+
+Strict settings: GPS glitch radius 25 m → 5 m, GPS and height rejection gates from 5 to 3 standard
+deviations, EKF failsafe threshold 0.8 → 0.6. Unsafe flights out of 24 per level, default → strict,
+in the ten conditions the generic quad can fly in.
+
+| Fault | Default | Strict | Effect |
+|---|---|---|---|
+| GPS dragged 0.2, 0.5, 1 m/s | 24, 24, 24 | 24, 24, 24 | none |
+| GPS dragged 2 m/s | 24 | 19 | small; the safety mode is still too late |
+| GPS dragged 5 m/s | 9 | 1 | fixed in almost every flight |
+| GPS jump 20 m to 400 m | 24 each | 24 each | none |
+| Barometer drift, all levels | 24 each | 24 each | none |
+| Barometer step 20 m, 50 m | 24, 24 | 24, 24 | none |
+| Barometer noise ±20 m, ±60 m | 19, 16 | 5, 11 | clearly better |
+| GPS jammed | 4 | 1 | within run-to-run variation |
+
+- **Overall: 483 unsafe flights of 840 became 452.** Stricter settings help with fast, noisy faults
+  and do nothing for slow or steady ones.
+- **No cost in normal flight:** every no-fault flight still passed, in every wind, so the strict
+  settings caused no false alarms here.
+- **What it means:** slow spoofing, steady GPS offsets and barometer drift cannot be tuned away
+  with these settings. The autopilot has one source of position and one of height and nothing to
+  check them against, so a slow lie looks like the truth. Fixing that needs a second, independent
+  source (a second GNSS receiver or antenna, optical flow, visual navigation), not a parameter.
+- **Limits of this study:** one set of strict values, one airframe. Other settings (for example
+  position-source switching) were not tried, and differences of two or three flights between
+  columns are within run-to-run variation.
+
 ### What this proves, and what it does not
 
 **Proves**
@@ -278,30 +315,30 @@ Details are in [README.md](README.md); developer notes are in [CLAUDE.md](CLAUDE
 
 ### Make the numbers defensible (short term)
 1. **Decide the spoofed-landing scoring question** above, then re-score.
-2. **Make drift faults comparable between drones:** hold the fault for a fixed time (or a fixed
+2. **PX4 support.** The open autopilot the US government standardised on, and one of the two that
+   bought-in and Indian-made flight controllers run. Several days of work: a second simulator,
+   log format and scoring path, with on/off faults first.
+3. **Make drift faults comparable between drones:** hold the fault for a fixed time (or a fixed
    distance) instead of "until the mission ends", so a faster drone is not flattered.
-3. **Tuning study:** rerun the GPS, barometer and spoofing faults with tighter EKF innovation gates
-   and a faster `FS_EKF_THRESH`, to show makers how much their settings would raise the safe limit.
-   After the spoofing result this is the most valuable next piece: it turns "your drone fails" into
-   "and this setting fixes it", or shows that settings alone cannot.
-4. **Harder levels** for accelerometer bias and compass, whose breaking points are still unknown, and
+4. **Test a second position source** against spoofing (a second GNSS receiver, optical flow), since
+   the tuning study showed settings alone do not stop a slow drag.
+5. **Harder levels** for accelerometer bias and compass, whose breaking points are still unknown, and
    horizontal GPS noise (the simulator has no parameter for it, so the runner must drive it).
-5. **Investigate the compass anomaly** (unsafe at L2 in strong wind while L3 to L5 pass).
-6. **Score the 120 m geofence ceiling**; today only the 600 m circle is checked.
-7. **Cold weather:** a Ladakh winter condition (−24 °C) with a cold-battery model.
+6. **Investigate the compass anomaly** (unsafe at L2 in strong wind while L3 to L5 pass).
+7. **Score the 120 m geofence ceiling**; today only the 600 m circle is checked.
+8. **Cold weather:** a Ladakh winter condition (−24 °C) with a cold-battery model.
 
 ### First user (the rule for moving on)
-8. **Talk to five drone makers** with a sample report in hand. Ask whether they would pay for a
+9. **Talk to five drone makers** with a sample report in hand. Ask whether they would pay for a
    pre-trial readiness report and which autopilot they use; that decides whether ArduPilot-only is
    enough. Ask for the parameter file plus weight, motors, propellers and battery.
-9. **Shape the report** to match the certification scheme's wording, so it can go into a
+10. **Shape the report** to match the certification scheme's wording, so it can go into a
     type-certification file as supporting evidence.
-10. **Before any sales use:** confirm the single-source press claims about failed GPS-denied trials,
+11. **Before any sales use:** confirm the single-source press claims about failed GPS-denied trials,
     and take legal advice on the non-commercial RflyMAD data, on GPL duties if ArduPilot binaries are
     shipped, and on ArduPilot's stance on military use. Choose a licence for this repository.
 
 ### After that (only once someone is using it)
-11. **PX4 support**, since many Indian makers use PX4.
 12. **Fixed-wing and VTOL** drones.
 13. **Layer 1: cameras.** Normal and thermal camera tests in dust, fog, rain and darkness. This is
     where the Unreal Engine setup (already connected) comes in, for realistic scenes.
